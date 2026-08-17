@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: cardors-skin-editor-pdn
+    runtime: python
+    buildCommand: pip install -r requirements-pdn.txt
+    startCommand: python pdn_server.py
+    plan: free
