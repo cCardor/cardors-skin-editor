@@ -22,9 +22,7 @@ let rectSelMode = 'add';
 let selectionMarchingOffset = 0; 
 let lastAnimTime = 0;
 
-const gridCanvas = document.createElement('canvas');
-gridCanvas.width = 512; gridCanvas.height = 512;
-const gridCtx = gridCanvas.getContext('2d');
+const gridSvg = document.getElementById('editor-2d-grid');
 
 const canvas3d = document.getElementById('editor-3d-canvas');
 
@@ -133,13 +131,73 @@ function hslToRgbArr(h, s, l) {
 }
 
 function drawGrid() {
-    gridCtx.clearRect(0,0,512,512);
-    gridCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)'; 
-    gridCtx.lineWidth = 1;
-    gridCtx.beginPath();
-    let step = 512 / SKIN_RES;
-    for(let i=0; i<=512; i+=step) { gridCtx.moveTo(i, 0); gridCtx.lineTo(i, 512); gridCtx.moveTo(0, i); gridCtx.lineTo(512, i); }
-    gridCtx.stroke();
+    if (!gridSvg) return;
+    if (!gridToggle.checked) {
+        gridSvg.style.display = 'none';
+        return;
+    }
+
+    const containerRect = container2D.getBoundingClientRect();
+    const wrapperRect = wrapper2D.getBoundingClientRect();
+    const width = Math.max(1, Math.round(wrapperRect.width));
+    const height = Math.max(1, Math.round(wrapperRect.height));
+    const scaleX = 512 / width;
+    const scaleY = 512 / height;
+    const step = width / SKIN_RES;
+
+    gridSvg.style.left = `${Math.round(wrapperRect.left - containerRect.left)}px`;
+    gridSvg.style.top = `${Math.round(wrapperRect.top - containerRect.top)}px`;
+    gridSvg.style.width = `${width}px`;
+    gridSvg.style.height = `${height}px`;
+
+    const commands = [];
+    for (let i = 0; i <= SKIN_RES; i++) {
+        // Çizgileri her yakınlaştırmada fiziksel ekran pikseline hizala.
+        const x = (Math.round(i * step) + 0.5) * scaleX;
+        const y = (Math.round(i * step) + 0.5) * scaleY;
+        commands.push(`M ${x} 0 V 512 M 0 ${y} H 512`);
+    }
+    // Tek path kullanımı kesişimlerde ikinci kez boyamayı engeller.
+    gridSvg.innerHTML = `<path d="${commands.join(' ')}" fill="none" stroke="#ffffff" stroke-opacity="1" stroke-width="0.35" vector-effect="non-scaling-stroke" shape-rendering="crispEdges"/>`;
+    gridSvg.style.display = 'block';
+}
+
+function drawGridOn3DTexture() {
+    const step = 512 / SKIN_RES;
+    renderCtx.save();
+
+    // Grid atlasını parça bazında oluştur: bir dış katman açıksa yalnız o
+    // parçanın overlay UV'si grid alır; diğer parçalar temel UV gridini korur.
+    const atlasScale = 512 / 64;
+    const partRegions = {
+        head:     { base: [0, 0, 32, 16],  outer: [32, 0, 32, 16] },
+        body:     { base: [16, 16, 24, 16], outer: [16, 32, 24, 16] },
+        rightLeg: { base: [0, 16, 16, 16],  outer: [0, 32, 16, 16] },
+        rightArm: { base: [40, 16, 16, 16], outer: [40, 32, 16, 16] },
+        leftLeg:  { base: [16, 48, 16, 16], outer: [0, 48, 16, 16] },
+        leftArm:  { base: [32, 48, 16, 16], outer: [48, 48, 16, 16] }
+    };
+    renderCtx.beginPath();
+    Object.entries(partRegions).forEach(([part, regions]) => {
+        const outerPart = document.querySelector(`.outer-map .part[data-part="${part}"]`);
+        const region = outerPart && !outerPart.classList.contains('off') ? regions.outer : regions.base;
+        const [x, y, w, h] = region;
+        renderCtx.rect(x * atlasScale, y * atlasScale, w * atlasScale, h * atlasScale);
+    });
+    renderCtx.clip();
+
+    // Difference, her skin renginin tersini üretir: koyu skinte açık, açık skinte koyu grid.
+    renderCtx.globalCompositeOperation = 'difference';
+    renderCtx.strokeStyle = '#ffffff';
+    renderCtx.lineWidth = 0.35;
+    renderCtx.beginPath();
+    for (let i = 0; i <= SKIN_RES; i++) {
+        const p = i * step + 0.5;
+        renderCtx.moveTo(p, 0); renderCtx.lineTo(p, 512);
+        renderCtx.moveTo(0, p); renderCtx.lineTo(512, p);
+    }
+    renderCtx.stroke();
+    renderCtx.restore();
 }
 
 function draw2DGuide() {
@@ -193,8 +251,18 @@ function draw2DGuide() {
     let svgHTML = '';
     parts.forEach(p => {
         const rx = p.x * s; const ry = p.y * s; const rw = p.w * s; const rh = p.h * s;
+        const [partName, faceName = ''] = p.n.replace('bot...', 'bottom').split(' ');
+        const compactPart = partName
+            .replace('right', 'R ')
+            .replace('left', 'L ')
+            .replace('Sleeve', 'Slv')
+            .replace('Pants', 'Pant');
+        const compactFace = faceName === 'bottom' ? 'Bottom' : faceName.charAt(0).toUpperCase() + faceName.slice(1);
+        const fontSize = Math.min(rw <= 32 ? 5.5 : 7.5, rh <= 32 ? 5.5 : 7.5);
+        const firstLineY = fontSize + 2;
+        const secondLineY = firstLineY + fontSize + 1;
         svgHTML += `<rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" fill="rgba(255, 255, 255, 0.04)" stroke="rgba(255, 255, 255, 0.5)" stroke-width="1" vector-effect="non-scaling-stroke" />`;
-        svgHTML += `<svg x="${rx}" y="${ry}" width="${rw}" height="${rh}"><text x="3" y="12" fill="rgba(255, 255, 255, 0.9)" font-family="'Segoe UI', sans-serif" font-size="10.5px" font-weight="600" style="pointer-events:none;">${p.n}</text></svg>`;
+        svgHTML += `<text x="${rx + 2}" y="${ry + firstLineY}" fill="rgba(255,255,255,.95)" font-family="Segoe UI, sans-serif" font-size="${fontSize}px" font-weight="700" style="pointer-events:none;"><tspan x="${rx + 2}">${compactPart}</tspan><tspan x="${rx + 2}" y="${ry + secondLineY}">${compactFace}</tspan></text>`;
     });
     guideSvg.innerHTML = svgHTML;
 }
@@ -241,10 +309,8 @@ function updateTexture() {
     renderCtx.imageSmoothingEnabled = false;
     renderCtx.clearRect(0,0,512,512);
     renderCtx.drawImage(canvas2d, 0, 0, 512, 512);
-    if (gridToggle.checked) {
-        drawGrid();
-        renderCtx.drawImage(gridCanvas, 0, 0);
-    }
+    if (gridToggle.checked && !is2DMode) drawGridOn3DTexture();
+    drawGrid();
     activeTextures.forEach(t => t.needsUpdate = true);
 }
 
@@ -537,17 +603,107 @@ function updateMenuStates() {
         setCheck(check, panel && window.getComputedStyle(panel).display !== 'none');
     });
 }
-document.getElementById('menu-view-grid').addEventListener('click', () => { closeAllMenus(); gridToggle.checked = !gridToggle.checked; updateTexture(); updateMenuStates(); });
+function setGridVisible(isVisible) {
+    gridToggle.checked = isVisible;
+    updateTexture();
+    updateMenuStates();
+    const gridButton = document.getElementById('tool-grid');
+    if (gridButton) gridButton.classList.toggle('active', isVisible);
+}
+
+document.getElementById('menu-view-grid').addEventListener('click', () => { closeAllMenus(); setGridVisible(!gridToggle.checked); });
+document.getElementById('tool-grid').addEventListener('click', () => setGridVisible(!gridToggle.checked));
 document.getElementById('menu-view-layer').addEventListener('click', () => { closeAllMenus(); const layerToggle = document.getElementById('toggle-outer-all'); layerToggle.click(); updateMenuStates(); });
 document.getElementById('menu-view-guide').addEventListener('click', () => { closeAllMenus(); document.getElementById('btn-action-guide').click(); });
 
 document.getElementById('btn-shortcuts-close').addEventListener('click', () => { document.getElementById('modal-shortcuts').style.display = 'none'; isListeningForKey = false; currentKeyTarget = null; });
+function defaultSaveAsName() {
+    const documentName = documents?.[activeDocIndex]?.name || `custom_${currentModel}_skin_${SKIN_RES}x`;
+    return documentName.replace(/\.(png|pdn)$/i, '');
+}
+
+function normaliseSaveAsName(name) {
+    const cleaned = String(name || '').trim().replace(/[\\/:*?"<>|]/g, '_').replace(/\.(png|pdn)$/i, '').replace(/\.+$/g, '');
+    return cleaned || `custom_${currentModel}_skin_${SKIN_RES}x`;
+}
+
+function downloadBlob(blob, fileName) {
+    const link = document.createElement('a');
+    const objectUrl = URL.createObjectURL(blob);
+    link.download = fileName;
+    link.href = objectUrl;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+}
+
+function skinCanvasAsPngBlob() {
+    return new Promise(resolve => canvas2d.toBlob(resolve, 'image/png'));
+}
+
+async function saveSkinAsPng(fileBaseName) {
+    const fileName = `${fileBaseName}.png`;
+    let fileHandle = null;
+
+    // Chromium tabanlı tarayıcılarda kullanıcı dosyanın hem adını hem de
+    // klasörünü sistemin yerel "Farklı Kaydet" penceresinden seçer.
+    if (window.showSaveFilePicker) {
+        try {
+            fileHandle = await window.showSaveFilePicker({
+                suggestedName: fileName,
+                types: [{ description: 'PNG resmi', accept: { 'image/png': ['.png'] } }]
+            });
+        } catch (error) {
+            if (error?.name !== 'AbortError') console.error('Farklı kaydet penceresi açılamadı:', error);
+            return;
+        }
+    }
+
+    const blob = await skinCanvasAsPngBlob();
+    if (!blob) {
+        alert('Skin PNG olarak hazırlanamadı.');
+        return;
+    }
+
+    try {
+        if (fileHandle) {
+            const writable = await fileHandle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+        } else {
+            // Firefox/Safari gibi File System Access API sunmayan tarayıcılarda
+            // tarayıcının normal indirme akışı kullanılır.
+            downloadBlob(blob, fileName);
+        }
+
+        if (documents?.[activeDocIndex]) {
+            documents[activeDocIndex].name = fileBaseName;
+            updateDocumentTabsUI();
+            saveCurrentDocumentState();
+        }
+    } catch (error) {
+        console.error('Dosya kaydedilemedi:', error);
+        alert('Dosya kaydedilemedi. Lütfen tekrar deneyin.');
+    }
+}
+
+function openSaveAsDialog() {
+    const nameInput = document.getElementById('save-as-name');
+    nameInput.value = defaultSaveAsName();
+    document.getElementById('modal-save-as').style.display = 'flex';
+    requestAnimationFrame(() => { nameInput.focus(); nameInput.select(); });
+}
+
 document.getElementById('menu-download-skin').addEventListener('click', () => {
     closeAllMenus();
-    const link = document.createElement('a');
-    link.download = `custom_${currentModel}_skin_${SKIN_RES}x.png`;
-    link.href = canvas2d.toDataURL('image/png');
-    link.click();
+    openSaveAsDialog();
+});
+document.getElementById('btn-save-as-cancel').addEventListener('click', () => {
+    document.getElementById('modal-save-as').style.display = 'none';
+});
+document.getElementById('btn-save-as-confirm').addEventListener('click', async () => {
+    const fileBaseName = normaliseSaveAsName(document.getElementById('save-as-name').value);
+    document.getElementById('modal-save-as').style.display = 'none';
+    await saveSkinAsPng(fileBaseName);
 });
 document.getElementById('menu-view-bg').addEventListener('click', () => { closeAllMenus(); document.getElementById('bg-color-picker').click(); });
 
@@ -753,14 +909,36 @@ function applyLiveTexture(modelType) {
 }
 
 function centerCameraOnVisibleParts() {
-    const box = new THREE.Box3(); let hasVisible = false;
-    viewer3d.playerObject.traverse((child) => { if (child.isMesh && child.visible && child.parent.visible) { const childBox = new THREE.Box3().setFromObject(child); box.union(childBox); hasVisible = true; } });
-    if (hasVisible && !box.isEmpty()) { const center = new THREE.Vector3(); box.getCenter(center); viewer3d.controls.target.copy(center); } else { viewer3d.controls.target.set(0, 8, 0); }
+    if (!viewer3d?.playerObject || !viewer3d.controls) return;
+
+    const box = new THREE.Box3();
+    let hasVisible = false;
+    viewer3d.playerObject.traverse((child) => {
+        // Bir parçanın bütün üst grupları da görünür olmalı. Böylece kapatılmış
+        // gövde parçaları kameranın odağına yanlışlıkla dahil edilmez.
+        if (!child.isMesh || !isMeshVisible(child)) return;
+
+        const childBox = new THREE.Box3().setFromObject(child);
+        box.union(childBox);
+        hasVisible = true;
+    });
+
+    if (hasVisible && !box.isEmpty()) {
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+        viewer3d.controls.target.copy(center);
+    } else {
+        viewer3d.controls.target.set(0, 8, 0);
+    }
+
+    // OrbitControls hedefi hemen yeniden hesaplamazsa yalnızca kafa açıkken
+    // eski gövde odağı korunabiliyordu.
+    viewer3d.controls.update();
 }
 
-document.querySelectorAll('.body-map .part').forEach(btn => { btn.addEventListener('click', function() { this.classList.toggle('off'); enforceUIVisibilityState(); }); });
+document.querySelectorAll('.body-map .part').forEach(btn => { btn.addEventListener('click', function() { this.classList.toggle('off'); enforceUIVisibilityState(); if (gridToggle.checked) updateTexture(); }); });
 document.getElementById('toggle-inner-all').addEventListener('change', e => { const isChecked = e.target.checked; document.querySelectorAll('.inner-map .part').forEach(btn => { if(isChecked) btn.classList.remove('off'); else btn.classList.add('off'); }); enforceUIVisibilityState(); });
-document.getElementById('toggle-outer-all').addEventListener('change', e => { const isChecked = e.target.checked; document.querySelectorAll('.outer-map .part').forEach(btn => { if(isChecked) btn.classList.remove('off'); else btn.classList.add('off'); }); enforceUIVisibilityState(); });
+document.getElementById('toggle-outer-all').addEventListener('change', e => { const isChecked = e.target.checked; document.querySelectorAll('.outer-map .part').forEach(btn => { if(isChecked) btn.classList.remove('off'); else btn.classList.add('off'); }); enforceUIVisibilityState(); if (gridToggle.checked) updateTexture(); });
 
 function enforceUIVisibilityState() {
     document.querySelectorAll('.body-map .part').forEach(btn => {
@@ -1002,6 +1180,7 @@ document.getElementById('btn-action-filler').addEventListener('click', () => {
 
 document.getElementById('btn-action-guide').addEventListener('click', () => {
     is2DGuideVisible = !is2DGuideVisible;
+    draw2DGuide();
     document.getElementById('editor-2d-guide').style.display = is2DGuideVisible ? 'block' : 'none';
     updateMenuStates();
     const guideBtn = document.getElementById('btn-action-guide');
@@ -1129,7 +1308,7 @@ function drawOn3D(intersects, e = null) {
 }
 
 canvas3d.addEventListener('mousemove', (e) => {
-    if (e.buttons === 2 && activeTool !== 'picker' && activeTool !== 'brush' && activeTool !== 'bucket') isPanning = true;
+    if (e.buttons === 2 && activeTool !== 'picker' && activeTool !== 'brush' && !isBucketMode) isPanning = true;
 
     const intersects = getIntersects(e); 
     const isHoveringModel = intersects.length > 0;
@@ -1151,14 +1330,21 @@ canvas3d.addEventListener('mousemove', (e) => {
     if (!isDrawing && !isRotating && !isPanning) {
         if (isHoveringModel) {
             viewer3d.controls.enableRotate = false;
-            if (activeTool === 'picker') canvas3d.style.cursor = 'help';
+            if (activeTool === 'picker') canvas3d.style.cursor = 'crosshair';
             else if (isRoundBrushMode) canvas3d.style.cursor = currentBrushCursorUrl; // Dinamik Yuvarlak İmleç
-            else if (activeTool === 'eraser') canvas3d.style.cursor = 'cell';
+            else if (activeTool === 'eraser') canvas3d.style.cursor = 'crosshair';
             else canvas3d.style.cursor = 'crosshair';
         } else { viewer3d.controls.enableRotate = true; canvas3d.style.cursor = 'grab'; }
     }
     
-    if (isDrawing && !isBucketMode) {
+    // Kova seçiliyken activeTool kalem olabilir; bu yüzden sürükleme durumunu
+    // doğrudan isBucketMode üzerinden ele alıyoruz.
+    if (isDrawing && isBucketMode && e.buttons !== 0) {
+        if (intersects.length > 0) drawOn3D(intersects, e);
+        return;
+    }
+
+    if (isDrawing) {
         const isPickingColor = activeTool === 'picker' || e.altKey;
         const pickerHit = isPickingColor ? getColorPickerIntersect(e) : null;
         if (pickerHit) {
@@ -1172,7 +1358,7 @@ canvas3d.addEventListener('mousemove', (e) => {
 canvas3d.addEventListener('mousedown', (e) => {
     if (e.button === 2) {
         // YENİ: Brush ve Bucket eklendi
-        if (activeTool === 'picker' || activeTool === 'brush' || activeTool === 'bucket') {
+        if (activeTool === 'picker' || activeTool === 'brush' || isBucketMode) {
             isPanning = false; 
         } else {
             isPanning = true; 
@@ -1220,7 +1406,11 @@ window.addEventListener('mouseup', (e) => {
     strokeDirtyBox = null;
 
     if (!isCopyModeActive && canvas3d && canvas3d.style.display !== 'none') {
-        canvas3d.style.cursor = 'default';
+        // Fare hareketi beklemeden, çizim aracının imlecini koru. Önceden
+        // burada "default" atanması tıkladıktan sonra imlecin anlık kaybolmasına
+        // neden oluyordu.
+        const usesDrawingCursor = isBucketMode || ['picker', 'brush', 'eraser'].includes(activeTool);
+        canvas3d.style.cursor = usesDrawingCursor ? (isRoundBrushMode ? currentBrushCursorUrl : 'crosshair') : 'default';
     }
 });
 

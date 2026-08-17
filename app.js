@@ -785,7 +785,7 @@ function updateSelectionVisuals() {
     const showBlueOverlay = (activeTool === 'rect_select' || activeTool === 'magic_wand');
     let svgHTML = '';
 
-    if (rectSelData) {
+    if (rectSelData?.hasReachedMinimum) {
         let rx = Math.min(rectSelData.startX, rectSelData.currentX);
         let ry = Math.min(rectSelData.startY, rectSelData.currentY);
         let rw = Math.abs(rectSelData.currentX - rectSelData.startX) + 1;
@@ -1353,7 +1353,7 @@ document.addEventListener('keydown', (e) => {
 
     if (e.key === 'Escape' && isCopyModeActive) { disableCopyMode(); return; }
 
-    if (e.ctrlKey && e.key.toLowerCase() === 'd') {
+    if ((e.ctrlKey && e.key.toLowerCase() === 'd') || (e.key === 'Escape' && hasSelection)) {
         e.preventDefault();
         if (transformMode) applyTransform();
         selectionMask.fill(0); checkHasSelection(); updateSelectionVisuals(); saveHistory(); return;
@@ -1411,7 +1411,8 @@ document.addEventListener('keydown', (e) => {
     if (e.key.toLowerCase() === toolShortcuts.swap) swapBtn.click();
     if (e.key.toLowerCase() === toolShortcuts.mirror) { mirrorBasic.checked = !mirrorBasic.checked; updateMirrorState(); }
     if (e.key.toLowerCase() === toolShortcuts.grid) {
-        gridToggle.checked = !gridToggle.checked; updateTexture();
+        if (typeof setGridVisible === 'function') setGridVisible(!gridToggle.checked);
+        else { gridToggle.checked = !gridToggle.checked; updateTexture(); }
         if (typeof updateMenuStates === 'function') updateMenuStates();
     }
 
@@ -1427,6 +1428,7 @@ document.addEventListener('keydown', (e) => {
 function update2DTransform() {
     wrapper2D.style.transform = `translate(${view2D.x}px, ${view2D.y}px) scale(${view2D.scale})`;
     document.getElementById('editor-2d-view').style.backgroundSize = `${16 / view2D.scale}px ${16 / view2D.scale}px`;
+    if (typeof drawGrid === 'function') drawGrid();
 
     // YENİ: Yakınlaştırmalarda SVG çizgilerini ve yuvarlakları ekran boyutunda sabit tutmak için yeniden renderla
     if (typeof updateSelectionVisuals === 'function') updateSelectionVisuals();
@@ -1437,6 +1439,7 @@ function update2DTransform() {
 btn3D.addEventListener('click', () => {
     is2DMode = false; btn3D.classList.add('active'); btn2D.classList.remove('active');
     canvas3d.style.display = 'block'; container2D.style.display = 'none';
+    if (typeof updateTexture === 'function') updateTexture();
     document.getElementById('btn-3d-screenshot').style.display = 'flex';
     document.getElementById('btn-action-mirror').style.display = 'flex';
     document.getElementById('btn-action-filler').style.display = 'flex';
@@ -1448,6 +1451,7 @@ btn3D.addEventListener('click', () => {
 btn2D.addEventListener('click', () => {
     is2DMode = true; btn2D.classList.add('active'); btn3D.classList.remove('active');
     canvas3d.style.display = 'none'; container2D.style.display = 'block'; update2DTransform();
+    if (typeof updateTexture === 'function') updateTexture();
     document.getElementById('btn-3d-screenshot').style.display = 'none';
     document.getElementById('btn-action-mirror').style.display = 'none';
     document.getElementById('btn-action-filler').style.display = 'none';
@@ -1515,6 +1519,8 @@ renderCanvas.addEventListener('mousedown', (e) => {
             transformData.startX = px; transformData.startY = py;
             transformData.origX = transformData.x; transformData.origY = transformData.y;
             transformData.origW = transformData.w; transformData.origH = transformData.h;
+            transformData.origScaleX = transformData.scaleX;
+            transformData.origScaleY = transformData.scaleY;
         }
         return;
     }
@@ -1531,7 +1537,7 @@ renderCanvas.addEventListener('mousedown', (e) => {
         if (!e.ctrlKey && rectSelMode === 'add') {
             selectionMask.fill(0); hasSelection = false;
         }
-        rectSelData = { startX: px, startY: py, currentX: px, currentY: py };
+        rectSelData = { startX: px, startY: py, currentX: px, currentY: py, hasReachedMinimum: false };
         if (typeof updateSelectionVisuals === 'function') updateSelectionVisuals();
         return;
     }
@@ -1599,18 +1605,34 @@ window.addEventListener('mousemove', (e) => {
             transformData.x = transformData.origX + dx;
             transformData.y = transformData.origY + dy;
         } else {
-            let newW = transformData.origW, newH = transformData.origH, newX = transformData.origX, newY = transformData.origY;
-            if (transformData.dragType === 'br') { newW = transformData.origW + dx; newH = transformData.origH + dy; }
-            if (transformData.dragType === 'tr') { newW = transformData.origW + dx; newH = transformData.origH - dy; newY = transformData.origY + dy; }
-            if (transformData.dragType === 'bl') { newW = transformData.origW - dx; newX = transformData.origX + dx; newH = transformData.origH + dy; }
-            if (transformData.dragType === 'tl') { newW = transformData.origW - dx; newX = transformData.origX + dx; newH = transformData.origH - dy; newY = transformData.origY + dy; }
+            const type = transformData.dragType;
+            let left = transformData.origX;
+            let right = transformData.origX + transformData.origW;
+            let top = transformData.origY;
+            let bottom = transformData.origY + transformData.origH;
 
-            if (transformData.dragType === 't') { newH = transformData.origH - dy; newY = transformData.origY + dy; }
-            if (transformData.dragType === 'b') { newH = transformData.origH + dy; }
-            if (transformData.dragType === 'l') { newW = transformData.origW - dx; newX = transformData.origX + dx; }
-            if (transformData.dragType === 'r') { newW = transformData.origW + dx; }
+            const changesHorizontal = ['tl', 'tr', 'bl', 'br', 'l', 'r'].includes(type);
+            const changesVertical = ['tl', 'tr', 'bl', 'br', 't', 'b'].includes(type);
 
-            transformData.w = newW; transformData.h = newH; transformData.x = newX; transformData.y = newY;
+            if (['tl', 'bl', 'l'].includes(type)) left += dx;
+            if (['tr', 'br', 'r'].includes(type)) right += dx;
+            if (['tl', 'tr', 't'].includes(type)) top += dy;
+            if (['bl', 'br', 'b'].includes(type)) bottom += dy;
+
+            if (changesHorizontal) {
+                const signedWidth = right - left;
+                transformData.x = Math.min(left, right);
+                transformData.w = Math.max(1, Math.abs(signedWidth));
+                // Tutamaç karşı kenarı geçtiğinde işaret değişir: yatay ayna.
+                transformData.scaleX = transformData.origScaleX * (signedWidth < 0 ? -1 : 1);
+            }
+            if (changesVertical) {
+                const signedHeight = bottom - top;
+                transformData.y = Math.min(top, bottom);
+                transformData.h = Math.max(1, Math.abs(signedHeight));
+                // Tutamaç karşı kenarı geçtiğinde işaret değişir: dikey ayna.
+                transformData.scaleY = transformData.origScaleY * (signedHeight < 0 ? -1 : 1);
+            }
         }
         renderTransformVisuals();
         renderComposite();
@@ -1621,11 +1643,16 @@ window.addEventListener('mousemove', (e) => {
 
     if (activeTool === 'rect_select' && rectSelData) {
         rectSelData.currentX = px; rectSelData.currentY = py;
+        const selectionWidth = Math.abs(rectSelData.currentX - rectSelData.startX) + 1;
+        const selectionHeight = Math.abs(rectSelData.currentY - rectSelData.startY) + 1;
+        // Eşik bir kez geçildiğinde seçim etkin kalır; fareyi başlangıç
+        // noktasına geri yaklaştırmak 1×1 seçime tekrar izin verir.
+        if (selectionWidth >= 2 || selectionHeight >= 2) rectSelData.hasReachedMinimum = true;
         updateSelectionVisuals();
         return;
     }
 
-    if (activeTool !== 'bucket' && activeTool !== 'magic_wand' && activeTool !== 'rect_select' && activeTool !== 'transform') {
+    if (activeTool !== 'magic_wand' && activeTool !== 'rect_select' && activeTool !== 'transform') {
         applyBrush(px, py, e);
     }
 });
@@ -1645,18 +1672,23 @@ window.addEventListener('mouseup', () => {
         let ry = Math.min(rectSelData.startY, rectSelData.currentY);
         let rw = Math.abs(rectSelData.currentX - rectSelData.startX) + 1;
         let rh = Math.abs(rectSelData.currentY - rectSelData.startY) + 1;
-        for (let y = ry; y < ry + rh; y++) {
-            for (let x = rx; x < rx + rw; x++) {
-                if (x >= 0 && x < SKIN_RES && y >= 0 && y < SKIN_RES) {
-                    if (rectSelMode === 'add') selectionMask[y * SKIN_RES + x] = 1;
-                    else if (rectSelMode === 'subtract') selectionMask[y * SKIN_RES + x] = 0;
-                    else if (rectSelMode === 'xor') selectionMask[y * SKIN_RES + x] ^= 1;
+        // Tek tıklama seçim üretmez. Ancak fare bir kez 2×1 / 1×2 eşiğine
+        // ulaştıysa, tekrar 1×1 boyuta küçültülse bile seçim geçerlidir.
+        const isLargeEnough = rectSelData.hasReachedMinimum;
+        if (isLargeEnough) {
+            for (let y = ry; y < ry + rh; y++) {
+                for (let x = rx; x < rx + rw; x++) {
+                    if (x >= 0 && x < SKIN_RES && y >= 0 && y < SKIN_RES) {
+                        if (rectSelMode === 'add') selectionMask[y * SKIN_RES + x] = 1;
+                        else if (rectSelMode === 'subtract') selectionMask[y * SKIN_RES + x] = 0;
+                        else if (rectSelMode === 'xor') selectionMask[y * SKIN_RES + x] ^= 1;
+                    }
                 }
             }
         }
         rectSelData = null; checkHasSelection();
         if (typeof updateSelectionVisuals === 'function') updateSelectionVisuals();
-        saveHistory();
+        if (isLargeEnough) saveHistory();
     }
 
     if (isDrawing2D && hasDrawnStroke && activeTool !== 'rect_select' && activeTool !== 'magic_wand' && activeTool !== 'transform') {
