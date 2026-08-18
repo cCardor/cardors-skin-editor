@@ -278,13 +278,13 @@ function updateDocumentTabsUI() {
 
         tab.innerHTML = `
             <img src="${doc.thumbnail}" alt="thumb">
-            <button class="doc-close" title="Dosyayı Kapat">&times;</button>
+            <button class="doc-close" title="Dosyayı Kapat" aria-label="Dosyayı Kapat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg></button>
         `;
 
         // Sekmeye tıklandığında dosyaya geçiş yap
         tab.addEventListener('mousedown', (e) => {
             // Çarpıya basıldıysa geçiş yapma
-            if (e.target.className.includes('doc-close')) return;
+            if (e.target.closest('.doc-close')) return;
             if (activeDocIndex !== index) {
                 if (transformMode) applyTransform();
                 saveCurrentDocumentState();
@@ -539,8 +539,10 @@ function updateLayerUI() {
                 <img id="thumb-layer-${l.id}" src="${l.canvas.toDataURL()}" style="width: 48px; height: 48px; min-width: 48px; image-rendering: pixelated; border: 1px solid #111; background: repeating-conic-gradient(#555 0% 25%, #888 0% 50%) 50% / 8px 8px; margin-right: 12px; border-radius: 4px;">
                 <span class="layer-name" style="font-size: 14px; font-weight: 500;">${l.name}</span>
             </div>
-            <button class="layer-vis-btn" title="Görünürlük" style="width: 24px; height: 24px;">
-                <svg viewBox="0 0 24 24" style="width: 18px; height: 18px;"><path fill="currentColor" d="${l.visible ? 'M12 4.5C7 4.5 2.7 7.6 1 12c1.7 4.4 6 7.5 11 7.5s9.3-3.1 11-7.5c-1.7-4.4-6-7.5-11-7.5zM12 17c-2.8 0-5-2.2-5-5s2.2-5 5-5 5 2.2 5 5-2.2 5-5 5zm0-8c-1.7 0-3 1.3-3 3s1.3 3 3 3 3-1.3 3-3-1.3-3-3-3z' : 'M12 7c2.8 0 5 2.2 5 5 0 .6-.1 1.2-.3 1.8l-8.5-8.5C9.4 7.1 10.7 7 12 7zm-5.7 1.8L4.1 6.5C2.5 8 1.4 9.9 1 12c1.7 4.4 6 7.5 11 7.5 1.7 0 3.3-.4 4.7-1.1l-2.2-2.2c-.8.5-1.6.8-2.5.8-2.8 0-5-2.2-5-5 0-.9.3-1.7.8-2.5l-1.5-1.5z'}"/></svg>
+            <button class="layer-vis-btn ${l.visible ? 'is-visible' : 'is-hidden'}" title="${l.visible ? 'Katmanı Gizle' : 'Katmanı Göster'}" aria-label="${l.visible ? 'Katmanı Gizle' : 'Katmanı Göster'}" style="width: 24px; height: 24px;">
+                ${l.visible
+                    ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg>'
+                    : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3 21 21"/><path d="M10.6 6.2A10.5 10.5 0 0 1 12 6c6 0 9.5 6 9.5 6a16 16 0 0 1-3.1 3.7"/><path d="M6.5 8.1A16 16 0 0 0 2.5 12S6 18 12 18c1.2 0 2.3-.2 3.3-.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>'}
             </button>
         `;
 
@@ -941,8 +943,6 @@ function applyBrush(px, py, e = null) {
         return;
     }
 
-    if (!layers[activeLayerIndex].visible) return;
-
     const actCtx = getActiveCtx();
 
     // Sağ tık kontrolü (2. Renk)
@@ -955,8 +955,10 @@ function applyBrush(px, py, e = null) {
 
     const isEraser = activeTool === 'eraser';
 
-    // Boya Kovası
-    if (isBucketMode) {
+    // Boya Kovası: Kalem seçiliyken Shift + sol tık geçici olarak kova gibi çalışır.
+    const isShiftLeftClick = e?.shiftKey && (e.button === 0 || e.buttons === 1);
+    const usesBucket = isBucketMode || (activeTool === 'brush' && isShiftLeftClick && !isRoundBrushMode);
+    if (usesBucket) {
         const targetPixels = [[px, py]];
         const mirrored = typeof getMirroredPixel === 'function' ? getMirroredPixel(px, py) : null;
         if (mirrored) targetPixels.push(mirrored);
@@ -1069,7 +1071,6 @@ function applyBrush(px, py, e = null) {
 }
 
 function floodFill(startCoords, e = null) {
-    if (!layers[activeLayerIndex].visible) return;
     const actCtx = getActiveCtx();
     const tolPercent = document.getElementById('slider-tol').value / 100;
     const targetDistSq = (255*255 * 4) * (tolPercent * tolPercent);
@@ -1353,6 +1354,18 @@ document.addEventListener('keydown', (e) => {
 
     if (e.key === 'Escape' && isCopyModeActive) { disableCopyMode(); return; }
 
+    if (e.ctrlKey && e.key.toLowerCase() === 'a' && is2DMode) {
+        e.preventDefault();
+        if (transformMode) applyTransform();
+        setTool('rect_select');
+        selectionMask.fill(1);
+        hasSelection = true;
+        rectSelData = null;
+        updateSelectionVisuals();
+        saveHistory();
+        return;
+    }
+
     if ((e.ctrlKey && e.key.toLowerCase() === 'd') || (e.key === 'Escape' && hasSelection)) {
         e.preventDefault();
         if (transformMode) applyTransform();
@@ -1469,6 +1482,13 @@ container2D.addEventListener('wheel', (e) => {
 });
 
 container2D.addEventListener('mousedown', (e) => {
+    // Seçim tuvalin dışından başlayabilir. Fare tuvale girdiğinde görünür
+    // bölümü seçilir; böylece sınırdan seçim yapmak zorlaşmaz.
+    if (activeTool === 'rect_select' && e.button === 0 && e.target !== renderCanvas) {
+        beginRectangleSelection(e);
+        e.preventDefault();
+        return;
+    }
     if (activeTool === 'rect_select' && e.button === 2) return;
     if (activeTool === 'picker' && e.button === 2) return; // YENİ: Renk seçicide sağ tıkla kaydırmayı engelle
     if (activeTool === 'brush' && e.button === 2) return; // YENİ: Kalem aracında sağ tıklamayı kaydırmadan çıkar
@@ -1479,15 +1499,41 @@ window.addEventListener('mousemove', (e) => { if (isPanning2D && is2DMode) { vie
 window.addEventListener('mouseup', () => { isPanning2D = false; container2D.style.cursor = 'grab'; });
 container2D.addEventListener('contextmenu', e => e.preventDefault());
 
-function get2DCoords(e) {
+function get2DCoords(e, clampToCanvas = true) {
     const rect = renderCanvas.getBoundingClientRect();
-    const px = Math.max(0, Math.min(SKIN_RES - 1, Math.floor((e.clientX - rect.left) / rect.width * SKIN_RES)));
-    const py = Math.max(0, Math.min(SKIN_RES - 1, Math.floor((e.clientY - rect.top) / rect.height * SKIN_RES)));
+    let px = Math.floor((e.clientX - rect.left) / rect.width * SKIN_RES);
+    let py = Math.floor((e.clientY - rect.top) / rect.height * SKIN_RES);
+    if (clampToCanvas) {
+        px = Math.max(0, Math.min(SKIN_RES - 1, px));
+        py = Math.max(0, Math.min(SKIN_RES - 1, py));
+    }
     return { px, py };
 }
 
+function beginRectangleSelection(e) {
+    const { px, py } = get2DCoords(e, false);
+    isDrawing2D = true;
+    if (e.button === 2 && e.ctrlKey) rectSelMode = 'xor';
+    else if (e.button === 2) rectSelMode = 'subtract';
+    else rectSelMode = 'add';
+
+    const isInsideCanvas = px >= 0 && px < SKIN_RES && py >= 0 && py < SKIN_RES;
+    const clearsExistingSelection = !e.ctrlKey && rectSelMode === 'add';
+    if (isInsideCanvas && clearsExistingSelection) {
+        selectionMask.fill(0);
+        hasSelection = false;
+    }
+    rectSelData = {
+        startX: px, startY: py, currentX: px, currentY: py,
+        hasReachedMinimum: false,
+        waitForCanvasEntry: !isInsideCanvas,
+        clearsExistingSelection
+    };
+    updateSelectionVisuals();
+}
+
 renderCanvas.addEventListener('mousedown', (e) => {
-    const { px, py } = get2DCoords(e);
+    const { px, py } = get2DCoords(e, activeTool === 'transform' ? false : true);
 
     // Transform aracı yönetimi
     if (activeTool === 'transform' && transformMode) {
@@ -1501,17 +1547,22 @@ renderCanvas.addEventListener('mousedown', (e) => {
 
         const hw = Math.abs(transformData.w) / 2;
         const hh = Math.abs(transformData.h) / 2;
-        const tol = Math.max(0.4, Math.min(1.5, Math.min(hw, hh) * 0.8));
+        // Tutamaçlar ekranda 5px yarıçapla çiziliyor. Tıklama alanını
+        // görünür halkadan daha geniş tutup yakınlaştırma seviyesine göre
+        // belge pikseline çeviriyoruz.
+        const canvasPixelsPerSkinPixel = renderCanvas.getBoundingClientRect().width / SKIN_RES;
+        const hitRadius = Math.max(1.1, 11 / Math.max(1, canvasPixelsPerSkinPixel));
+        const hitsHandle = (hx, hy) => Math.hypot(rx - hx, ry - hy) <= hitRadius;
 
         let hit = null;
-        if (Math.abs(rx - (-hw)) < tol && Math.abs(ry - (-hh)) < tol) hit = 'tl';
-        else if (Math.abs(rx - hw) < tol && Math.abs(ry - (-hh)) < tol) hit = 'tr';
-        else if (Math.abs(rx - (-hw)) < tol && Math.abs(ry - hh) < tol) hit = 'bl';
-        else if (Math.abs(rx - hw) < tol && Math.abs(ry - hh) < tol) hit = 'br';
-        else if (Math.abs(rx - 0) < tol && Math.abs(ry - (-hh)) < tol) hit = 't';
-        else if (Math.abs(rx - 0) < tol && Math.abs(ry - hh) < tol) hit = 'b';
-        else if (Math.abs(rx - (-hw)) < tol && Math.abs(ry - 0) < tol) hit = 'l';
-        else if (Math.abs(rx - hw) < tol && Math.abs(ry - 0) < tol) hit = 'r';
+        if (hitsHandle(-hw, -hh)) hit = 'tl';
+        else if (hitsHandle(hw, -hh)) hit = 'tr';
+        else if (hitsHandle(-hw, hh)) hit = 'bl';
+        else if (hitsHandle(hw, hh)) hit = 'br';
+        else if (hitsHandle(0, -hh)) hit = 't';
+        else if (hitsHandle(0, hh)) hit = 'b';
+        else if (hitsHandle(-hw, 0)) hit = 'l';
+        else if (hitsHandle(hw, 0)) hit = 'r';
         else hit = 'move'; // YENİ: Yuvarlaklara denk gelmediği sürece her yere tıklamak şekli TAŞIR!
 
         if (hit) {
@@ -1528,17 +1579,7 @@ renderCanvas.addEventListener('mousedown', (e) => {
     // Seçim aracı yönetimi
     if (activeTool === 'rect_select') {
         if (e.button !== 0 && e.button !== 2) return;
-        isDrawing2D = true;
-
-        if (e.button === 2 && e.ctrlKey) rectSelMode = 'xor';
-        else if (e.button === 2) rectSelMode = 'subtract';
-        else rectSelMode = 'add';
-
-        if (!e.ctrlKey && rectSelMode === 'add') {
-            selectionMask.fill(0); hasSelection = false;
-        }
-        rectSelData = { startX: px, startY: py, currentX: px, currentY: py, hasReachedMinimum: false };
-        if (typeof updateSelectionVisuals === 'function') updateSelectionVisuals();
+        beginRectangleSelection(e);
         return;
     }
 
@@ -1595,7 +1636,7 @@ renderCanvas.addEventListener('mousedown', (e) => {
 });
 
 window.addEventListener('mousemove', (e) => {
-    const { px, py } = get2DCoords(e);
+    const { px, py } = get2DCoords(e, Boolean(rectSelData));
 
     if (activeTool === 'transform' && transformMode && transformData.isDragging) {
         const dx = px - transformData.startX;
@@ -1642,6 +1683,20 @@ window.addEventListener('mousemove', (e) => {
     if (!isDrawing2D) return;
 
     if (activeTool === 'rect_select' && rectSelData) {
+        // Dışarıdan başlayan sürüklemelerde seçim, imlecin tuvale ilk girdiği
+        // pikselden başlar. Dışarıdaki mesafe seçimin boyutuna eklenmez.
+        if (rectSelData.waitForCanvasEntry) {
+            if (px < 0 || px >= SKIN_RES || py < 0 || py >= SKIN_RES) return;
+            if (rectSelData.clearsExistingSelection) {
+                selectionMask.fill(0);
+                hasSelection = false;
+            }
+            rectSelData.startX = px;
+            rectSelData.startY = py;
+            rectSelData.currentX = px;
+            rectSelData.currentY = py;
+            rectSelData.waitForCanvasEntry = false;
+        }
         rectSelData.currentX = px; rectSelData.currentY = py;
         const selectionWidth = Math.abs(rectSelData.currentX - rectSelData.startX) + 1;
         const selectionHeight = Math.abs(rectSelData.currentY - rectSelData.startY) + 1;

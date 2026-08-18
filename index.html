@@ -509,10 +509,20 @@
                         </svg>
                     </button>
                     <div class="color-wrapper" id="wrap-secondary" style="position: absolute; right: 0; bottom: 0; width: 28px; height: 28px; z-index: 1;">
-                        <div class="color-box" id="secondary-color"></div>
+                        <svg class="color-box color-box-svg" viewBox="0 0 28 28" aria-hidden="true">
+                            <defs><pattern id="secondary-alpha-grid" width="6" height="6" patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="#555"/><path d="M0 0h3v3H0zM3 3h3v3H3z" fill="#777"/></pattern></defs>
+                            <rect x=".5" y=".5" width="27" height="27" rx="6" fill="url(#secondary-alpha-grid)"/>
+                            <rect id="secondary-color" x=".5" y=".5" width="27" height="27" rx="6" fill="#ffffff"/>
+                            <rect x=".5" y=".5" width="27" height="27" rx="6" fill="none" stroke="rgba(255,255,255,.32)"/>
+                        </svg>
                     </div>
                     <div class="color-wrapper active" id="wrap-primary" style="position: absolute; left: 6px; top: 6px; width: 28px; height: 28px; z-index: 2; box-shadow: 2px 2px 5px rgba(0,0,0,0.8);">
-                        <div class="color-box" id="primary-color"></div>
+                        <svg class="color-box color-box-svg" viewBox="0 0 28 28" aria-hidden="true">
+                            <defs><pattern id="primary-alpha-grid" width="6" height="6" patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="#555"/><path d="M0 0h3v3H0zM3 3h3v3H3z" fill="#777"/></pattern></defs>
+                            <rect x=".5" y=".5" width="27" height="27" rx="6" fill="url(#primary-alpha-grid)"/>
+                            <rect id="primary-color" x=".5" y=".5" width="27" height="27" rx="6" fill="#000000"/>
+                            <rect x=".5" y=".5" width="27" height="27" rx="6" fill="none" stroke="rgba(255,255,255,.32)"/>
+                        </svg>
                     </div>
                 </div>
                 <div style="display: flex; align-items: center; background: #1e1e1e; border: 1px solid #3c3c3c; border-radius: 4px; padding: 4px 6px;">

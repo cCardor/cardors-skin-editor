@@ -289,17 +289,33 @@ function addToColorHistory() {
 function renderColorHistory() {
     const container = document.getElementById('color-history');
     container.innerHTML = '';
-    colorHistory.forEach(c => {
+    colorHistory.forEach((c, index) => {
         const swatchWrapper = document.createElement('div'); swatchWrapper.className = 'history-swatch';
-        const swatchInner = document.createElement('div'); swatchInner.className = 'history-swatch-inner';
-        swatchInner.style.backgroundColor = `hsla(${c.h}, ${c.s}%, ${c.l}%, ${c.a})`;
-        swatchWrapper.appendChild(swatchInner);
+        swatchWrapper.title = `HSLA(${Math.round(c.h)}, ${Math.round(c.s)}%, ${Math.round(c.l)}%, ${Math.round(c.a * 100)}%)`;
+        swatchWrapper.setAttribute('role', 'button');
+        swatchWrapper.setAttribute('tabindex', '0');
+
+        // Keskin, çözünürlükten bağımsız çerçeve için renk geçmişi SVG ile çizilir.
+        const svgNs = 'http://www.w3.org/2000/svg';
+        const swatchSvg = document.createElementNS(svgNs, 'svg');
+        swatchSvg.classList.add('history-swatch-svg');
+        swatchSvg.setAttribute('viewBox', '0 0 20 20');
+        swatchSvg.setAttribute('aria-hidden', 'true');
+        const patternId = `history-alpha-grid-${index}`;
+        swatchSvg.innerHTML = `
+            <defs><pattern id="${patternId}" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="4" height="4" fill="#555"/><path d="M0 0h2v2H0zM2 2h2v2H2z" fill="#777"/></pattern></defs>
+            <rect x=".5" y=".5" width="19" height="19" rx="4" fill="url(#${patternId})"/>
+            <rect x=".5" y=".5" width="19" height="19" rx="4" fill="hsla(${c.h}, ${c.s}%, ${c.l}%, ${c.a})"/>
+            <rect x=".5" y=".5" width="19" height="19" rx="4" fill="none" stroke="rgba(255,255,255,.32)"/>
+        `;
+        swatchWrapper.appendChild(swatchSvg);
         swatchWrapper.onclick = () => { 
             currentH = c.h; currentS = c.s; currentL = c.l; currentA = c.a; 
             let rgb = hslToRgbArr(currentH / 360, currentS / 100, currentL / 100);
             currentR = rgb[0]; currentG = rgb[1]; currentB = rgb[2];
             updateUIColors(); 
         };
+        swatchWrapper.onkeydown = (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); swatchWrapper.click(); } };
         container.appendChild(swatchWrapper);
     });
 }
@@ -488,8 +504,8 @@ function updateUIColors() {
     document.getElementById('slider-l').style.background = `linear-gradient(to right, #000, hsl(${currentH}, ${currentS}%, 50%), #fff)`;
     document.getElementById('slider-a').style.background = `linear-gradient(to right, hsla(${currentH}, ${currentS}%, ${currentL}%, 0), hsla(${currentH}, ${currentS}%, ${currentL}%, 1))`;
 
-    document.getElementById('primary-color').style.backgroundColor = `rgba(${currentR}, ${currentG}, ${currentB}, ${currentA})`;
-    document.getElementById('secondary-color').style.backgroundColor = `hsla(${secondaryColor.h}, ${secondaryColor.s}%, ${secondaryColor.l}%, ${secondaryColor.a})`;
+    document.getElementById('primary-color').setAttribute('fill', `rgba(${currentR}, ${currentG}, ${currentB}, ${currentA})`);
+    document.getElementById('secondary-color').setAttribute('fill', `hsla(${secondaryColor.h}, ${secondaryColor.s}%, ${secondaryColor.l}%, ${secondaryColor.a})`);
     if (typeof schedulePreferencesSave === 'function') schedulePreferencesSave();
 }
 
