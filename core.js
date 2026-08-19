@@ -25,6 +25,13 @@ let lastAnimTime = 0;
 const gridSvg = document.getElementById('editor-2d-grid');
 
 const canvas3d = document.getElementById('editor-3d-canvas');
+const orientationCubeCanvas = document.getElementById('view-orientation-cube');
+let orientationCubeRenderer = null;
+let orientationCubeScene = null;
+let orientationCubeCamera = null;
+let orientationCubeMesh = null;
+const orientationCubeRaycaster = new THREE.Raycaster();
+const orientationCubePointer = new THREE.Vector2();
 
 // Global Durum Yöneticileri
 let isDrawing = false; 
@@ -433,6 +440,7 @@ function setColorWheelMode(mode) {
     document.getElementById('color-wheel-triangle').classList.toggle('active', mode === 'triangle');
     document.getElementById('color-wheel-square').classList.toggle('active', mode === 'square');
     drawColorWheel();
+    if (typeof schedulePreferencesSave === 'function') schedulePreferencesSave();
 }
 
 wheelCanvas.addEventListener('mousedown', (e) => { 
@@ -487,11 +495,11 @@ function updateUIColors() {
     document.getElementById('slider-l').value = currentL; 
     document.getElementById('slider-a').value = Math.round(currentA * 100);
 
-    // YENİ: Değerleri metin olarak ilgili yerlere yazdırıyoruz
-    document.getElementById('val-slider-h').innerHTML = currentH + '&deg;';
-    document.getElementById('val-slider-s').innerText = currentS + '%';
-    document.getElementById('val-slider-l').innerText = currentL + '%';
-    document.getElementById('val-slider-a').innerText = Math.round(currentA * 100) + '%';
+    // HSL değer alanları, sürgülerle çift yönlü senkron tutulur.
+    document.getElementById('val-slider-h').value = currentH;
+    document.getElementById('val-slider-s').value = currentS;
+    document.getElementById('val-slider-l').value = currentL;
+    document.getElementById('val-slider-a').value = Math.round(currentA * 100);
     
     // YENİ: HEX kodunu hesapla ve sağdaki kutucuğa aktar
     const hexR = currentR.toString(16).padStart(2, '0');
@@ -519,6 +527,31 @@ function updateFromSliders() {
 }
 document.getElementById('slider-h').addEventListener('input', updateFromSliders); document.getElementById('slider-s').addEventListener('input', updateFromSliders);
 document.getElementById('slider-l').addEventListener('input', updateFromSliders); document.getElementById('slider-a').addEventListener('input', updateFromSliders);
+['h', 's', 'l', 'a'].forEach(channel => {
+    const slider = document.getElementById(`slider-${channel}`);
+    const valueInput = document.getElementById(`val-slider-${channel}`);
+    const applyTypedValue = () => {
+        if (valueInput.value === '') return;
+        const typed = Number(valueInput.value);
+        if (!Number.isFinite(typed)) return;
+        const value = Math.max(Number(slider.min), Math.min(Number(slider.max), Math.round(typed)));
+        slider.value = String(value);
+        updateFromSliders();
+    };
+    valueInput.addEventListener('input', applyTypedValue);
+    valueInput.addEventListener('change', applyTypedValue);
+    valueInput.addEventListener('keydown', event => {
+        if (event.key === 'Enter') { event.preventDefault(); applyTypedValue(); valueInput.blur(); }
+    });
+});
+document.querySelectorAll('[data-hsl-step]').forEach(button => {
+    button.addEventListener('click', () => {
+        const channel = button.dataset.hslStep;
+        const slider = document.getElementById(`slider-${channel}`);
+        slider.value = String(Math.max(Number(slider.min), Math.min(Number(slider.max), Number(slider.value) + Number(button.dataset.step))));
+        updateFromSliders();
+    });
+});
 document.getElementById('color-wheel-triangle').addEventListener('click', () => setColorWheelMode('triangle'));
 document.getElementById('color-wheel-square').addEventListener('click', () => setColorWheelMode('square'));
 
@@ -581,7 +614,7 @@ document.getElementById('texture-upload-hidden').addEventListener('change', (e) 
     const file = e.target.files[0]; if (!file) return;
     if (file.name.toLowerCase().endsWith('.pdn')) {
         if (typeof openPdnDocument === 'function') openPdnDocument(file);
-        else alert('PDN okuyucu başlatılamadı. Uygulamayı pdn_server.py ile açın.');
+        else alert('The PDN reader could not be started. Open the app with pdn_server.py.');
         e.target.value = '';
         return;
     }
@@ -676,7 +709,7 @@ async function saveSkinAsPng(fileBaseName) {
 
     const blob = await skinCanvasAsPngBlob();
     if (!blob) {
-        alert('Skin PNG olarak hazırlanamadı.');
+        alert('The skin PNG could not be prepared.');
         return;
     }
 
@@ -698,7 +731,7 @@ async function saveSkinAsPng(fileBaseName) {
         }
     } catch (error) {
         console.error('Dosya kaydedilemedi:', error);
-        alert('Dosya kaydedilemedi. Lütfen tekrar deneyin.');
+        alert('The file could not be saved. Please try again.');
     }
 }
 
@@ -732,8 +765,10 @@ refInput.addEventListener('change', (e) => {
 function createReferenceWindow(img) {
     refWindowCounter++; let w = img.width; let h = img.height; const maxW = 350; const maxH = 400; 
     if (w > maxW) { h = Math.round((h * maxW) / w); w = maxW; } if (h > maxH) { w = Math.round((w * maxH) / h); h = maxH; } w = Math.max(w, 150); h = Math.max(h, 150);
-    const win = document.createElement('div'); win.className = 'ref-window'; win.id = 'ref-win-' + refWindowCounter; const offset = (refWindowCounter % 10) * 25; win.style.left = (260 + offset) + 'px'; win.style.top = (70 + offset) + 'px'; win.style.width = w + 'px'; win.style.height = (h + 28) + 'px';
-    win.innerHTML = `<div class="ref-header"><span>Ref ${refWindowCounter}</span><div class="ref-controls"><button class="ref-btn ref-zoom-out" title="Uzaklaştır">-</button><button class="ref-btn ref-zoom-in" title="Yakınlaştır">+</button><button class="ref-btn ref-close-btn" title="Kapat">&times;</button></div></div><div class="ref-content"><canvas class="ref-canvas"></canvas></div>`;
+    const win = document.createElement('div'); win.className = 'ref-window';
+    if (img.width === img.height && (img.width === 64 || img.width === 128)) win.classList.add('pixel-reference');
+    win.id = 'ref-win-' + refWindowCounter; const offset = (refWindowCounter % 10) * 25; win.style.left = (260 + offset) + 'px'; win.style.top = (70 + offset) + 'px'; win.style.width = w + 'px'; win.style.height = (h + 28) + 'px';
+    win.innerHTML = `<div class="ref-header"><span class="ref-title"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m5.5 17 4.5-4 3 2.5 2-1.5 3.5 3"/></svg>Ref ${refWindowCounter}</span><div class="ref-controls"><button class="ref-btn ref-zoom-out" title="Zoom Out" aria-label="Zoom Out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/></svg></button><button class="ref-btn ref-zoom-in" title="Zoom In" aria-label="Zoom In"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v12M6 12h12"/></svg></button><span class="ref-control-divider"></span><button class="ref-btn ref-close-btn" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg></button></div></div><div class="ref-content"><canvas class="ref-canvas"></canvas></div>`;
     document.body.appendChild(win);
     const canvas = win.querySelector('.ref-canvas'); const ctx = canvas.getContext('2d', { willReadFrequently: true }); canvas.width = img.width; canvas.height = img.height; ctx.drawImage(img, 0, 0);
     let refZoom = 100; let isRefDragging = false; let startX = 0, startY = 0; const header = win.querySelector('.ref-header');
@@ -765,13 +800,91 @@ function createReferenceWindow(img) {
     window.addEventListener('mouseup', () => { isPickingRef = false; });
 }
 
+function createOrientationFaceTexture(label) {
+    const textureCanvas = document.createElement('canvas');
+    textureCanvas.width = textureCanvas.height = 128;
+    const textureCtx = textureCanvas.getContext('2d');
+    textureCtx.fillStyle = '#202020';
+    textureCtx.fillRect(0, 0, 128, 128);
+    textureCtx.strokeStyle = '#a4a4a4';
+    textureCtx.lineWidth = 4;
+    textureCtx.strokeRect(3, 3, 122, 122);
+    textureCtx.fillStyle = '#f1f1f1';
+    textureCtx.font = label.length > 3 ? '700 22px Arial' : '700 30px Arial';
+    textureCtx.textAlign = 'center';
+    textureCtx.textBaseline = 'middle';
+    textureCtx.fillText(label, 64, 66);
+    const texture = new THREE.CanvasTexture(textureCanvas);
+    texture.colorSpace = THREE.SRGBColorSpace || texture.colorSpace;
+    return texture;
+}
+
+function updateOrientationCube() {
+    if (!orientationCubeRenderer || !orientationCubeMesh || !viewer3d || is2DMode) return;
+    // Küp, ana kameranın ters yönüyle döner: görünen yüzler mevcut bakış yönünü anlatır.
+    orientationCubeMesh.quaternion.copy(viewer3d.camera.quaternion).invert();
+    orientationCubeRenderer.render(orientationCubeScene, orientationCubeCamera);
+}
+
+function snapCameraToOrientation(direction) {
+    if (!viewer3d?.camera || !viewer3d?.controls) return;
+    const target = viewer3d.controls.target.clone();
+    const distance = Math.max(1, viewer3d.camera.position.distanceTo(target));
+    direction.normalize();
+    viewer3d.camera.position.copy(target).addScaledVector(direction, distance);
+    // OrbitControls kendi sabit Y eksenini kullanır. Bu ekseni üst/alt görünümde
+    // değiştirmek, sonraki fare döndürmelerinin yönünü bozuyordu.
+    viewer3d.camera.up.set(0, 1, 0);
+    viewer3d.camera.lookAt(target);
+    viewer3d.controls.target.copy(target);
+    viewer3d.controls.update();
+    if (typeof viewer3d.render === 'function') viewer3d.render();
+    else viewer3d.renderer.render(viewer3d.scene, viewer3d.camera);
+    updateOrientationCube();
+}
+
+function initOrientationCube() {
+    if (!orientationCubeCanvas || orientationCubeRenderer) return;
+    orientationCubeRenderer = new THREE.WebGLRenderer({ canvas: orientationCubeCanvas, alpha: true, antialias: true });
+    orientationCubeRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    orientationCubeRenderer.setSize(118, 118, false);
+    orientationCubeScene = new THREE.Scene();
+    orientationCubeCamera = new THREE.OrthographicCamera(-1.25, 1.25, 1.25, -1.25, 0.1, 10);
+    orientationCubeCamera.position.set(0, 0, 5);
+    const faceLabels = ['RIGHT', 'LEFT', 'TOP', 'BOTTOM', 'FRONT', 'BACK'];
+    const materials = faceLabels.map(label => new THREE.MeshBasicMaterial({ map: createOrientationFaceTexture(label) }));
+    orientationCubeMesh = new THREE.Mesh(new THREE.BoxGeometry(1.25, 1.25, 1.25), materials);
+    orientationCubeScene.add(orientationCubeMesh);
+
+    const selectFace = (event) => {
+        const bounds = orientationCubeCanvas.getBoundingClientRect();
+        orientationCubePointer.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1;
+        orientationCubePointer.y = -((event.clientY - bounds.top) / bounds.height) * 2 + 1;
+        orientationCubeRaycaster.setFromCamera(orientationCubePointer, orientationCubeCamera);
+        const hit = orientationCubeRaycaster.intersectObject(orientationCubeMesh, false)[0];
+        if (hit?.face) snapCameraToOrientation(hit.face.normal.clone());
+    };
+    orientationCubeCanvas.addEventListener('click', selectFace);
+    orientationCubeCanvas.addEventListener('keydown', (event) => {
+        const directions = { ArrowUp: new THREE.Vector3(0, 1, 0), ArrowDown: new THREE.Vector3(0, -1, 0), ArrowLeft: new THREE.Vector3(-1, 0, 0), ArrowRight: new THREE.Vector3(1, 0, 0) };
+        if (!directions[event.key]) return;
+        event.preventDefault();
+        snapCameraToOrientation(directions[event.key]);
+    });
+    updateOrientationCube();
+}
+
 function init3DViewer() {
     if (!window.skinview3d || !window.skinview3d.SkinViewer) { console.error("skinview3d yüklenemedi."); return false; }
     try {
         viewer3d = new skinview3d.SkinViewer({ canvas: canvas3d, width: 1200, height: 900, alpha: true });
         viewer3d.camera.position.set(0, 8, 60);
-        if (viewer3d.controls) { viewer3d.controls.enableZoom = true; viewer3d.controls.enableRotate = true; viewer3d.controls.target.set(0, 8, 0); }
+        if (viewer3d.controls) {
+            viewer3d.controls.enableZoom = true; viewer3d.controls.enableRotate = true; viewer3d.controls.target.set(0, 8, 0);
+            viewer3d.controls.addEventListener?.('change', updateOrientationCube);
+        }
         viewer3d.scene.background = new THREE.Color(bgPicker.value);
+        initOrientationCube();
         return true;
     } catch (err) { return false; }
 }
@@ -806,6 +919,53 @@ function cropTransparentScreenshot(sourceCanvas) {
     return result;
 }
 
+function cropScreenshotToVisibleModel(sourceCanvas) {
+    if (!viewer3d?.playerObject || !viewer3d?.camera) return cropTransparentScreenshot(sourceCanvas);
+
+    // WebGL bazı tarayıcılarda saydam zeminin alfasını 1 olarak okuyabildiği için
+    // kırpmayı alfa kanalına değil, görünür model geometrisinin ekran sınırına göre yaparız.
+    viewer3d.playerObject.updateMatrixWorld(true);
+    viewer3d.camera.updateMatrixWorld();
+    let hasVisibleMesh = false;
+    let left = sourceCanvas.width, top = sourceCanvas.height, right = -1, bottom = -1;
+    // playerObject içinde skin dışında yardımcı/efekt nesneleri de bulunabilir.
+    // Sadece altı gerçek vücut parçasının iç ve dış katmanlarını hesaba katıyoruz.
+    const skin = viewer3d.playerObject.skin;
+    const bodyParts = ['head', 'body', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg'];
+    bodyParts.forEach(partName => {
+        const part = skin?.[partName];
+        ['innerLayer', 'outerLayer'].forEach(layerName => {
+            const layer = part?.[layerName];
+            if (!layer) return;
+            layer.traverse(child => {
+                if (!child.isMesh || !child.geometry || !isMeshVisible(child)) return;
+                const positions = child.geometry.getAttribute('position');
+                if (!positions) return;
+                for (let i = 0; i < positions.count; i++) {
+                    const projected = new THREE.Vector3().fromBufferAttribute(positions, i).applyMatrix4(child.matrixWorld).project(viewer3d.camera);
+                    // Kameranın arkasındaki veya uzak kesim düzleminin dışındaki
+                    // verteksler projeksiyonu yapay biçimde genişletmesin.
+                    if (projected.z < -1 || projected.z > 1) continue;
+                    const x = (projected.x * 0.5 + 0.5) * sourceCanvas.width;
+                    const y = (-projected.y * 0.5 + 0.5) * sourceCanvas.height;
+                    left = Math.min(left, x); top = Math.min(top, y);
+                    right = Math.max(right, x); bottom = Math.max(bottom, y);
+                    hasVisibleMesh = true;
+                }
+            });
+        });
+    });
+    if (!hasVisibleMesh || !Number.isFinite(left) || right <= left || bottom <= top) return cropTransparentScreenshot(sourceCanvas);
+
+    const padding = 8;
+    left = Math.max(0, Math.floor(left - padding)); top = Math.max(0, Math.floor(top - padding));
+    right = Math.min(sourceCanvas.width - 1, Math.ceil(right + padding)); bottom = Math.min(sourceCanvas.height - 1, Math.ceil(bottom + padding));
+    const result = document.createElement('canvas');
+    result.width = right - left + 1; result.height = bottom - top + 1;
+    result.getContext('2d').drawImage(sourceCanvas, left, top, result.width, result.height, 0, 0, result.width, result.height);
+    return result;
+}
+
 async function take3DScreenshot() {
     if (!viewer3d || !viewer3d.renderer) return;
     const renderer = viewer3d.renderer;
@@ -821,9 +981,9 @@ async function take3DScreenshot() {
         if (typeof viewer3d.render === 'function') viewer3d.render();
         else renderer.render(viewer3d.scene, viewer3d.camera);
 
-        const cropped = cropTransparentScreenshot(canvas3d);
+        const cropped = cropScreenshotToVisibleModel(canvas3d);
         const blob = await new Promise(resolve => cropped.toBlob(resolve, 'image/png'));
-        if (!blob) throw new Error('PNG oluşturulamadı.');
+        if (!blob) throw new Error('The PNG could not be created.');
 
         screenshot3DBlob = blob;
         if (screenshot3DUrl) URL.revokeObjectURL(screenshot3DUrl);
@@ -832,7 +992,7 @@ async function take3DScreenshot() {
         document.getElementById('modal-3d-screenshot').style.display = 'flex';
     } catch (error) {
         console.error('3D ekran görüntüsü alınamadı:', error);
-        alert('3D ekran görüntüsü oluşturulamadı.');
+        alert('The 3D screenshot could not be created.');
     } finally {
         viewer3d.scene.background = originalBackground;
         renderer.setClearColor(originalClearColor, originalClearAlpha);
@@ -854,16 +1014,16 @@ document.getElementById('btn-screenshot-download').addEventListener('click', () 
 });
 document.getElementById('btn-screenshot-copy').addEventListener('click', async () => {
     if (!screenshot3DBlob || !navigator.clipboard || !window.ClipboardItem) {
-        alert('Bu tarayıcı PNG panoya kopyalamayı desteklemiyor.');
+        alert('This browser does not support copying PNG images to the clipboard.');
         return;
     }
     try {
         await navigator.clipboard.write([new ClipboardItem({ 'image/png': screenshot3DBlob })]);
-        document.getElementById('btn-screenshot-copy').textContent = 'Kopyalandı';
-        setTimeout(() => { document.getElementById('btn-screenshot-copy').textContent = 'Kopyala'; }, 1500);
+        document.getElementById('btn-screenshot-copy').textContent = 'Copied';
+        setTimeout(() => { document.getElementById('btn-screenshot-copy').textContent = 'Copy'; }, 1500);
     } catch (error) {
         console.error('PNG panoya kopyalanamadı:', error);
-        alert('Görsel panoya kopyalanamadı.');
+        alert('The image could not be copied to the clipboard.');
     }
 });
 
@@ -895,7 +1055,7 @@ function loadDefaultTexture(modelType) {
 
 function applyLiveTexture(modelType) {
     draw2DGuide(); 
-    if (!viewer3d) { if (!init3DViewer()) return Promise.reject(new Error("3D viewer hazır değil.")); }
+    if (!viewer3d) { if (!init3DViewer()) return Promise.reject(new Error("The 3D viewer is not ready.")); }
     return viewer3d.loadSkin(canvas2d.toDataURL(), { model: modelType }).then(() => {
         activeTextures = []; 
         viewer3d.scene.children.forEach(child => { if (child.isLight) child.visible = false; });
@@ -920,7 +1080,8 @@ function applyLiveTexture(modelType) {
             sk.rightArm.position.y = sk.rightArm.userData.origY; sk.leftArm.position.y = sk.leftArm.userData.origY;
             if (sk.rightArm.outerLayer) sk.rightArm.outerLayer.position.y = 0; if (sk.leftArm.outerLayer) sk.leftArm.outerLayer.position.y = 0;
         }
-        enforceUIVisibilityState(); updateTexture(); 
+        enforceUIVisibilityState(); updateTexture();
+        updateOrientationCube();
     }).catch(e => console.error("Doku Yükleme Hatası:", e));
 }
 
@@ -1140,7 +1301,7 @@ function disableCopyMode() {
 
 document.getElementById('btn-action-mirror').addEventListener('click', function() {
     if (isCopyModeActive) { disableCopyMode(); } 
-    else { isCopyModeActive = true; this.classList.add('active', 'waiting'); this.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>Uzuv Seçin...</span>`; }
+    else { isCopyModeActive = true; this.classList.add('active', 'waiting'); this.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>Select a Limb...</span>`; }
 });
 
 function sVertL(ctx, i, fX, fY, fW, fH, dX, dY, dW, dH, s) { ctx.imageSmoothingEnabled = false; ctx.clearRect(dX*s, dY*s, dW*s, dH*s); ctx.drawImage(i, fX*s, fY*s, 1, fH*s, dX*s, dY*s, dW*s, dH*s); }
@@ -1158,7 +1319,7 @@ function wrapPart(ctx, img, p, s) {
     sHorzB(ctx, img, f.x, f.y, f.w, f.h, p.bottom.x, p.bottom.y, p.bottom.w, p.bottom.h, s);
 }
 
-document.getElementById('btn-action-filler').addEventListener('click', () => {
+function runAutoFill() {
     const isAlex = currentModel === 'slim';
     const actCtx = typeof getActiveCtx === 'function' ? getActiveCtx() : ctx2d;
     const tempCanvas = document.createElement('canvas'); 
@@ -1192,6 +1353,21 @@ document.getElementById('btn-action-filler').addEventListener('click', () => {
     
     if(typeof renderComposite === 'function') renderComposite();
     if(typeof saveHistory === 'function') setTimeout(saveHistory, 50);
+}
+
+const autoFillModal = document.getElementById('modal-autofill-confirm');
+document.getElementById('btn-action-filler').addEventListener('click', () => {
+    autoFillModal.style.display = 'flex';
+});
+document.getElementById('btn-autofill-cancel').addEventListener('click', () => {
+    autoFillModal.style.display = 'none';
+});
+document.getElementById('btn-autofill-confirm').addEventListener('click', () => {
+    autoFillModal.style.display = 'none';
+    runAutoFill();
+});
+autoFillModal.addEventListener('click', (event) => {
+    if (event.target === autoFillModal) autoFillModal.style.display = 'none';
 });
 
 document.getElementById('btn-action-guide').addEventListener('click', () => {
@@ -1459,19 +1635,22 @@ document.getElementById('menu-settings-shortcuts').addEventListener('click', () 
     
     container.innerHTML = ''; // Eski listeyi temizle
     
-    // Araçların kullanıcı dostu Türkçe isimleri
+    // Araç isimleri ve simgeleri, araç çubuğundaki karşılıklarıyla birebir aynıdır.
     const toolNames = { 
-        brush: 'Kalem', 
-        bucket: 'Boya Kovası', 
-        eraser: 'Silgi', 
-        picker: 'Renk Seçici', 
-        rect_select: 'Seçim Aracı', 
-        magic_wand: 'Sihirli Değnek', 
-        transform: 'Seçimi Taşı', 
-        swap: 'Renkleri Değiştir', 
-        mirror: 'Ayna (Aç/Kapat)', 
-        grid: 'Izgara (Aç/Kapat)' 
+        brush: 'Pencil',
+        round_brush: 'Round Brush',
+        bucket: 'Paint Bucket',
+        eraser: 'Eraser',
+        picker: 'Color Picker',
+        rect_select: 'Rectangle Select',
+        magic_wand: 'Magic Wand',
+        transform: 'Move Selection',
+        swap: 'Swap Colors',
+        mirror: 'Mirror (Toggle)',
+        grid: 'Grid (Toggle)'
     };
+    const iconSources = { brush: '#tool-brush', round_brush: '#tool-round_brush', bucket: '#tool-bucket', eraser: '#tool-eraser', picker: '#tool-picker', rect_select: '#tool-rect_select', magic_wand: '#tool-magic_wand', transform: '#tool-transform', swap: '#swap-colors', mirror: '#btn-action-mirror', grid: '#tool-grid' };
+    const getToolbarIcon = (key) => document.querySelector(iconSources[key])?.querySelector('svg')?.outerHTML || '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7"/></svg>';
     
     // Her bir kısayol için listeye yeni bir eleman oluştur
     for (let key in toolShortcuts) {
@@ -1479,7 +1658,7 @@ document.getElementById('menu-settings-shortcuts').addEventListener('click', () 
         item.className = 'shortcut-item';
         
         item.innerHTML = `
-            <span>${toolNames[key] || key}</span>
+            <span class="shortcut-tool">${getToolbarIcon(key)}<span>${toolNames[key] || key}</span></span>
             <button class="shortcut-key-btn" data-key="${key}">${toolShortcuts[key].toUpperCase()}</button>
         `;
         

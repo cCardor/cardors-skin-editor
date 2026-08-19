@@ -55,6 +55,8 @@ function savePersistentPreferences() {
         const preferences = {
             backgroundColor: bgPicker.value,
             shortcuts: toolShortcuts,
+            colorWheelMode: (typeof colorWheelMode === 'string' ? colorWheelMode : 'triangle'),
+            adjustments: lastAdjustmentValues,
             colors: {
                 primary: { r: currentR, g: currentG, b: currentB, h: currentH, s: currentS, l: currentL, a: currentA },
                 secondary: secondaryColor,
@@ -145,6 +147,19 @@ async function restorePersistentPreferences() {
             if (typeof preferences.shortcuts[key] === 'string' && preferences.shortcuts[key]) toolShortcuts[key] = preferences.shortcuts[key];
         });
     }
+    if (preferences.adjustments && typeof preferences.adjustments === 'object') {
+        const hueSat = preferences.adjustments.hueSat;
+        const brightnessContrast = preferences.adjustments.brightnessContrast;
+        if (hueSat && typeof hueSat === 'object') {
+            if (Number.isFinite(hueSat.hue)) lastAdjustmentValues.hueSat.hue = Math.max(-180, Math.min(180, Math.round(hueSat.hue)));
+            if (Number.isFinite(hueSat.sat)) lastAdjustmentValues.hueSat.sat = Math.max(0, Math.min(200, Math.round(hueSat.sat)));
+            if (Number.isFinite(hueSat.light)) lastAdjustmentValues.hueSat.light = Math.max(-100, Math.min(100, Math.round(hueSat.light)));
+        }
+        if (brightnessContrast && typeof brightnessContrast === 'object') {
+            if (Number.isFinite(brightnessContrast.bri)) lastAdjustmentValues.brightnessContrast.bri = Math.max(-100, Math.min(100, Math.round(brightnessContrast.bri)));
+            if (Number.isFinite(brightnessContrast.con)) lastAdjustmentValues.brightnessContrast.con = Math.max(-100, Math.min(100, Math.round(brightnessContrast.con)));
+        }
+    }
     const colors = preferences.colors;
     if (colors && colors.primary) {
         const primary = colors.primary;
@@ -154,6 +169,9 @@ async function restorePersistentPreferences() {
         }
         if (colors.secondary && [colors.secondary.h, colors.secondary.s, colors.secondary.l, colors.secondary.a].every(Number.isFinite)) secondaryColor = colors.secondary;
         if (Array.isArray(colors.history)) colorHistory = colors.history.slice(0, 14);
+    }
+    if (preferences.colorWheelMode === 'triangle' || preferences.colorWheelMode === 'square') {
+        setColorWheelMode(preferences.colorWheelMode);
     }
     restorePanelStates(preferences.panels);
     const restoredSkin = await restoreLastSkinSnapshot(preferences.lastSkin).catch(() => false);
@@ -278,7 +296,7 @@ function updateDocumentTabsUI() {
 
         tab.innerHTML = `
             <img src="${doc.thumbnail}" alt="thumb">
-            <button class="doc-close" title="Dosyayı Kapat" aria-label="Dosyayı Kapat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg></button>
+            <button class="doc-close" title="Close File" aria-label="Close File"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg></button>
         `;
 
         // Sekmeye tıklandığında dosyaya geçiş yap
@@ -296,7 +314,7 @@ function updateDocumentTabsUI() {
         tab.querySelector('.doc-close').addEventListener('click', (e) => {
             e.stopPropagation();
             if (documents.length <= 1) {
-                alert("En az bir dosya (çalışma alanı) açık kalmalıdır.");
+                alert("At least one file must remain open.");
                 return;
             }
             if (transformMode && index === activeDocIndex) applyTransform();
@@ -397,6 +415,10 @@ let transformData = {
 };
 let clipboardData = null;
 let originalStateData = null;
+const lastAdjustmentValues = {
+    hueSat: { hue: 0, sat: 100, light: 0 },
+    brightnessContrast: { bri: 0, con: 0 }
+};
 
 const winHueSat = document.getElementById('window-hue-sat');
 const winBriCon = document.getElementById('window-bri-con');
@@ -539,7 +561,7 @@ function updateLayerUI() {
                 <img id="thumb-layer-${l.id}" src="${l.canvas.toDataURL()}" style="width: 48px; height: 48px; min-width: 48px; image-rendering: pixelated; border: 1px solid #111; background: repeating-conic-gradient(#555 0% 25%, #888 0% 50%) 50% / 8px 8px; margin-right: 12px; border-radius: 4px;">
                 <span class="layer-name" style="font-size: 14px; font-weight: 500;">${l.name}</span>
             </div>
-            <button class="layer-vis-btn ${l.visible ? 'is-visible' : 'is-hidden'}" title="${l.visible ? 'Katmanı Gizle' : 'Katmanı Göster'}" aria-label="${l.visible ? 'Katmanı Gizle' : 'Katmanı Göster'}" style="width: 24px; height: 24px;">
+            <button class="layer-vis-btn ${l.visible ? 'is-visible' : 'is-hidden'}" title="${l.visible ? 'Hide Layer' : 'Show Layer'}" aria-label="${l.visible ? 'Hide Layer' : 'Show Layer'}" style="width: 24px; height: 24px;">
                 ${l.visible
                     ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg>'
                     : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3 21 21"/><path d="M10.6 6.2A10.5 10.5 0 0 1 12 6c6 0 9.5 6 9.5 6a16 16 0 0 1-3.1 3.7"/><path d="M6.5 8.1A16 16 0 0 0 2.5 12S6 18 12 18c1.2 0 2.3-.2 3.3-.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>'}
@@ -676,6 +698,8 @@ function saveHistory() {
 }
 function undo() { if (historyStep > 0) { historyStep--; restoreHistory(historyData[historyStep]); } }
 function redo() { if (historyStep < historyData.length - 1) { historyStep++; restoreHistory(historyData[historyStep]); } }
+document.getElementById('btn-history-undo')?.addEventListener('click', undo);
+document.getElementById('btn-history-redo')?.addEventListener('click', redo);
 function restoreHistory(stateStr) {
     if (transformMode) cancelTransform();
     const stateObj = JSON.parse(stateStr);
@@ -1179,15 +1203,15 @@ function floodFill(startCoords, e = null) {
 }
 
 function updateToolTitles() {
-    document.getElementById('tool-brush').title = `Kalem (${toolShortcuts.brush.toUpperCase()})`;
-    document.getElementById('tool-bucket').title = `Boya Kovası (${toolShortcuts.bucket.toUpperCase()})`;
-    document.getElementById('tool-eraser').title = `Silgi (${toolShortcuts.eraser.toUpperCase()})`;
-    document.getElementById('tool-picker').title = `Renk Seçici (${toolShortcuts.picker.toUpperCase()})`;
-    if (document.getElementById('tool-rect_select')) document.getElementById('tool-rect_select').title = `Seçim Aracı (${toolShortcuts.rect_select.toUpperCase()})`;
-    if (document.getElementById('tool-magic_wand')) document.getElementById('tool-magic_wand').title = `Sihirli Değnek (${toolShortcuts.magic_wand.toUpperCase()})`;
-    if (document.getElementById('tool-transform')) document.getElementById('tool-transform').title = `Seçimi Taşı (${toolShortcuts.transform.toUpperCase()})`;
-    document.getElementById('swap-colors').title = `Renkleri Değiştir (${toolShortcuts.swap.toUpperCase()})`;
-    document.getElementById('mirror-basic-label').title = `Ayna Kısayolu (${toolShortcuts.mirror.toUpperCase()})`;
+    document.getElementById('tool-brush').title = `Pencil (${toolShortcuts.brush.toUpperCase()})`;
+    document.getElementById('tool-bucket').title = `Paint Bucket (${toolShortcuts.bucket.toUpperCase()})`;
+    document.getElementById('tool-eraser').title = `Eraser (${toolShortcuts.eraser.toUpperCase()})`;
+    document.getElementById('tool-picker').title = `Color Picker (${toolShortcuts.picker.toUpperCase()})`;
+    if (document.getElementById('tool-rect_select')) document.getElementById('tool-rect_select').title = `Rectangle Select (${toolShortcuts.rect_select.toUpperCase()})`;
+    if (document.getElementById('tool-magic_wand')) document.getElementById('tool-magic_wand').title = `Magic Wand (${toolShortcuts.magic_wand.toUpperCase()})`;
+    if (document.getElementById('tool-transform')) document.getElementById('tool-transform').title = `Move Selection (${toolShortcuts.transform.toUpperCase()})`;
+    document.getElementById('swap-colors').title = `Swap Colors (${toolShortcuts.swap.toUpperCase()})`;
+    document.getElementById('mirror-basic-label').title = `Mirror Shortcut (${toolShortcuts.mirror.toUpperCase()})`;
 }
 
 // === ARAÇ (TOOL) ARAYÜZÜ VE DEĞİŞİM MANTIĞI ===
@@ -1354,6 +1378,20 @@ document.addEventListener('keydown', (e) => {
 
     if (e.key === 'Escape' && isCopyModeActive) { disableCopyMode(); return; }
 
+    // Transform sırasında Esc iptal değil, onay işlevi görür. Dönüşen seçim henüz
+    // geçici olduğu için bu kontrol genel seçim iptalinden önce yapılmalıdır.
+    if (transformMode && e.key === 'Escape') {
+        e.preventDefault();
+        applyTransform();
+        // Dönüşüm onaylanır, ardından Ctrl+D ile aynı şekilde seçim temizlenir.
+        selectionMask.fill(0);
+        checkHasSelection();
+        updateSelectionVisuals();
+        saveHistory();
+        saveCurrentDocumentState();
+        return;
+    }
+
     if (e.ctrlKey && e.key.toLowerCase() === 'a' && is2DMode) {
         e.preventDefault();
         if (transformMode) applyTransform();
@@ -1409,7 +1447,6 @@ document.addEventListener('keydown', (e) => {
     }
 
     if (transformMode && e.key === 'Enter') { applyTransform(); return; }
-    if (transformMode && e.key === 'Escape') { cancelTransform(); return; }
 
     if (customizingShortcutFor) {
         e.preventDefault();
@@ -1452,6 +1489,8 @@ function update2DTransform() {
 btn3D.addEventListener('click', () => {
     is2DMode = false; btn3D.classList.add('active'); btn2D.classList.remove('active');
     canvas3d.style.display = 'block'; container2D.style.display = 'none';
+    document.getElementById('view-orientation-cube').style.display = 'block';
+    if (typeof updateOrientationCube === 'function') updateOrientationCube();
     if (typeof updateTexture === 'function') updateTexture();
     document.getElementById('btn-3d-screenshot').style.display = 'flex';
     document.getElementById('btn-action-mirror').style.display = 'flex';
@@ -1464,6 +1503,7 @@ btn3D.addEventListener('click', () => {
 btn2D.addEventListener('click', () => {
     is2DMode = true; btn2D.classList.add('active'); btn3D.classList.remove('active');
     canvas3d.style.display = 'none'; container2D.style.display = 'block'; update2DTransform();
+    document.getElementById('view-orientation-cube').style.display = 'none';
     if (typeof updateTexture === 'function') updateTexture();
     document.getElementById('btn-3d-screenshot').style.display = 'none';
     document.getElementById('btn-action-mirror').style.display = 'none';
@@ -2107,6 +2147,7 @@ function applyTransform() {
     
     renderComposite(); 
     saveHistory(); 
+    saveCurrentDocumentState();
     
     if (activeTool === 'transform') {
         setTool('rect_select'); 
@@ -2418,12 +2459,14 @@ function openAdjustmentWindow(win) {
     win.style.display = 'flex';
     
     if (win.id === 'window-hue-sat') {
-        document.getElementById('adj-hue').value = 0; document.getElementById('val-hue').innerText = 0;
-        document.getElementById('adj-sat').value = 100; document.getElementById('val-sat').innerText = 100;
-        document.getElementById('adj-light').value = 0; document.getElementById('val-light').innerText = 0;
+        setAdjustmentValue('adj-hue', lastAdjustmentValues.hueSat.hue, false);
+        setAdjustmentValue('adj-sat', lastAdjustmentValues.hueSat.sat, false);
+        setAdjustmentValue('adj-light', lastAdjustmentValues.hueSat.light, false);
+        processHueSaturation();
     } else if (win.id === 'window-bri-con') {
-        document.getElementById('adj-bri').value = 0; document.getElementById('val-bri').innerText = 0;
-        document.getElementById('adj-con').value = 0; document.getElementById('val-con').innerText = 0;
+        setAdjustmentValue('adj-bri', lastAdjustmentValues.brightnessContrast.bri, false);
+        setAdjustmentValue('adj-con', lastAdjustmentValues.brightnessContrast.con, false);
+        processBrightnessContrast();
     } else if (win.id === 'window-sepia') {
         document.getElementById('adj-sepia').value = 25; 
         document.getElementById('val-sepia').innerText = 25;
@@ -2450,6 +2493,16 @@ function cancelAdjustments(win) {
 }
 
 function applyAdjustments(win) {
+    if (win.id === 'window-hue-sat') {
+        lastAdjustmentValues.hueSat.hue = Number(document.getElementById('adj-hue').value);
+        lastAdjustmentValues.hueSat.sat = Number(document.getElementById('adj-sat').value);
+        lastAdjustmentValues.hueSat.light = Number(document.getElementById('adj-light').value);
+        schedulePreferencesSave();
+    } else if (win.id === 'window-bri-con') {
+        lastAdjustmentValues.brightnessContrast.bri = Number(document.getElementById('adj-bri').value);
+        lastAdjustmentValues.brightnessContrast.con = Number(document.getElementById('adj-con').value);
+        schedulePreferencesSave();
+    }
     if (originalStateData) {
         if (typeof saveHistory === 'function') saveHistory();
     }
@@ -2508,18 +2561,48 @@ function resizeSkinNearestNeighbor(targetRes) {
     saveCurrentDocumentState();
 }
 
-['adj-hue', 'adj-sat', 'adj-light'].forEach(id => {
-    document.getElementById(id).addEventListener('input', (e) => {
-        document.getElementById('val-' + id.split('-')[1]).innerText = e.target.value;
-        processHueSaturation();
+const adjustmentControlDefaults = {
+    'adj-hue': 0, 'adj-sat': 100, 'adj-light': 0,
+    'adj-bri': 0, 'adj-con': 0
+};
+
+function setAdjustmentValue(rangeId, rawValue, preview = true) {
+    const range = document.getElementById(rangeId);
+    const numberInput = document.getElementById(`${rangeId}-number`);
+    if (!range || !numberInput) return;
+    const parsed = Number(rawValue);
+    const fallback = Number(range.value);
+    const value = Math.max(Number(range.min), Math.min(Number(range.max), Number.isFinite(parsed) ? Math.round(parsed) : fallback));
+    range.value = String(value);
+    numberInput.value = String(value);
+    if (!preview) return;
+    if (rangeId === 'adj-hue' || rangeId === 'adj-sat' || rangeId === 'adj-light') processHueSaturation();
+    else processBrightnessContrast();
+}
+
+Object.keys(adjustmentControlDefaults).forEach(rangeId => {
+    const range = document.getElementById(rangeId);
+    const numberInput = document.getElementById(`${rangeId}-number`);
+    range.addEventListener('input', () => setAdjustmentValue(rangeId, range.value));
+    numberInput.addEventListener('input', () => {
+        if (numberInput.value !== '' && numberInput.value !== '-') setAdjustmentValue(rangeId, numberInput.value);
+    });
+    numberInput.addEventListener('change', () => setAdjustmentValue(rangeId, numberInput.value));
+    numberInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') { event.preventDefault(); setAdjustmentValue(rangeId, numberInput.value); numberInput.blur(); }
     });
 });
 
-['adj-bri', 'adj-con'].forEach(id => {
-    document.getElementById(id).addEventListener('input', (e) => {
-        document.getElementById('val-' + id.split('-')[1]).innerText = e.target.value;
-        processBrightnessContrast();
+document.querySelectorAll('[data-adjustment-step]').forEach(button => {
+    button.addEventListener('click', () => {
+        const rangeId = button.dataset.adjustmentStep;
+        const range = document.getElementById(rangeId);
+        setAdjustmentValue(rangeId, Number(range.value) + Number(button.dataset.step));
     });
+});
+
+document.querySelectorAll('[data-adjustment-reset]').forEach(button => {
+    button.addEventListener('click', () => setAdjustmentValue(button.dataset.adjustmentReset, adjustmentControlDefaults[button.dataset.adjustmentReset]));
 });
 
 function processHueSaturation() {
@@ -2762,8 +2845,8 @@ function showDropImportModal() {
 
     const remaining = pendingDroppedFiles.length - 1;
     document.getElementById('drop-import-message').textContent = remaining > 0
-        ? `“${file.name}” için bir işlem seçin. Sırada ${remaining} dosya daha var.`
-        : `“${file.name}” için bir işlem seçin.`;
+        ? `Choose an action for “${file.name}”. ${remaining} file(s) remaining.`
+        : `Choose an action for “${file.name}”.`;
     document.getElementById('modal-drop-import').style.display = 'flex';
 }
 
@@ -2788,7 +2871,7 @@ function openPdnDocument(file, onComplete = null) {
         try {
             const apiBaseUrl = (window.PDN_API_URL || '').replace(/\/$/, '');
             if (!apiBaseUrl && location.hostname !== '127.0.0.1' && location.hostname !== 'localhost') {
-                throw new Error('PDN servisi henüz yapılandırılmadı.');
+                throw new Error('The PDN service is not configured yet.');
             }
             const response = await fetch(`${apiBaseUrl}/api/open-pdn`, {
                 method: 'POST',
@@ -2796,7 +2879,7 @@ function openPdnDocument(file, onComplete = null) {
                 body: JSON.stringify({ fileName: file.name, data: event.target.result.split(',')[1] })
             });
             const pdn = await response.json();
-            if (!response.ok) throw new Error(pdn.error || 'PDN dosyası okunamadı.');
+            if (!response.ok) throw new Error(pdn.error || 'The PDN file could not be read.');
 
             const res = (pdn.width === 128 || pdn.height === 128) ? 128 : 64;
             const layerImages = await Promise.all(pdn.layers.map(layer => new Promise((resolve, reject) => {
@@ -2821,7 +2904,7 @@ function openPdnDocument(file, onComplete = null) {
             if (onComplete) onComplete();
         } catch (error) {
             console.error('PDN açma hatası:', error);
-            alert(`PDN dosyası açılamadı: ${error.message}`);
+            alert(`The PDN file could not be opened: ${error.message}`);
             if (onComplete) onComplete();
         }
     };
@@ -2867,7 +2950,7 @@ document.getElementById('btn-drop-import-layer').addEventListener('click', () =>
     if (!file) return;
     document.getElementById('modal-drop-import').style.display = 'none';
     if (file.name.toLowerCase().endsWith('.pdn')) {
-        alert('PDN dosyaları katman yapılarını korumak için “Dosya Aç” seçeneğiyle açılır.');
+        alert('To preserve their layer structure, PDN files must be opened with “Open File”.');
         finishDroppedFileChoice();
         return;
     }

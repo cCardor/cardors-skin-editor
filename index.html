@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="en">
 
 <head>
     <meta charset="UTF-8">
@@ -25,31 +25,31 @@
 
     <!-- TRANSFORM (TAŞIMA) MENÜSÜ -->
     <div id="transform-toolbar" class="tf-toolbar">
-        <button class="tf-btn" id="btn-tf-flip-h" title="Yatay Aynala"><svg viewBox="0 0 24 24" fill="none"
+        <button class="tf-btn" id="btn-tf-flip-h" title="Flip Horizontally"><svg viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2">
                 <path d="M12 2v20M17 7l5 5-5 5M7 7l-5 5 5 5" />
             </svg></button>
-        <button class="tf-btn" id="btn-tf-flip-v" title="Dikey Aynala"><svg viewBox="0 0 24 24" fill="none"
+        <button class="tf-btn" id="btn-tf-flip-v" title="Flip Vertically"><svg viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2">
                 <path d="M2 12h20M7 17l5 5 5-5M7 7l5-5 5 5" />
             </svg></button>
         <div class="tf-divider"></div>
-        <button class="tf-btn" id="btn-tf-rot-ccw" title="Sola Döndür (-90)"><svg viewBox="0 0 24 24" fill="none"
+        <button class="tf-btn" id="btn-tf-rot-ccw" title="Rotate Left (-90)"><svg viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2">
                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
                 <path d="M3 3v5h5" />
             </svg></button>
-        <button class="tf-btn" id="btn-tf-rot-cw" title="Sağa Döndür (+90)"><svg viewBox="0 0 24 24" fill="none"
+        <button class="tf-btn" id="btn-tf-rot-cw" title="Rotate Right (+90)"><svg viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2">
                 <path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
                 <path d="M21 3v5h-5" />
             </svg></button>
         <div class="tf-divider"></div>
-        <button class="tf-btn" id="btn-tf-apply" title="Uygula (Enter)" style="color: #38ef7d;"><svg viewBox="0 0 24 24"
+        <button class="tf-btn" id="btn-tf-apply" title="Apply (Enter)" style="color: #38ef7d;"><svg viewBox="0 0 24 24"
                 fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M20 6L9 17l-5-5" />
             </svg></button>
-        <button class="tf-btn" id="btn-tf-cancel" title="İptal (Esc)" style="color: #ff4d4d;"><svg viewBox="0 0 24 24"
+        <button class="tf-btn" id="btn-tf-cancel" title="Cancel (Esc)" style="color: #ff4d4d;"><svg viewBox="0 0 24 24"
                 fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M18 6L6 18M6 6l12 12" />
             </svg></button>
@@ -63,7 +63,7 @@
                 <div class="dropdown-separator"></div>
                 <div class="dropdown-item" id="menu-add-reference">Add Reference Image...</div>
                 <div class="dropdown-separator"></div>
-                <div class="dropdown-item" id="menu-download-skin">Farklı Kaydet...</div>
+                <div class="dropdown-item" id="menu-download-skin">Save As...</div>
             </div>
         </div>
         <div class="menu-item" data-menu="view">View
@@ -137,16 +137,29 @@
 
     <div class="modal-overlay" id="modal-drop-import">
         <div class="modal">
-            <h2>Görüntü Yükle</h2>
+            <h2>Import Image</h2>
             <div class="modal-group">
-                <label id="drop-import-message">Bu görüntüyle ne yapmak istersiniz?</label>
+                <label id="drop-import-message">What would you like to do with this image?</label>
             </div>
             <div class="modal-actions" style="justify-content: space-between;">
-                <button class="modal-btn" id="btn-drop-import-cancel">İptal Et</button>
+                <button class="modal-btn" id="btn-drop-import-cancel">Cancel</button>
                 <div style="display: flex; gap: 10px;">
-                    <button class="modal-btn" id="btn-drop-import-layer">Katman Ekle</button>
-                    <button class="modal-btn primary" id="btn-drop-import-open">Dosya Aç</button>
+                    <button class="modal-btn" id="btn-drop-import-layer">Add Layer</button>
+                    <button class="modal-btn primary" id="btn-drop-import-open">Open File</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-autofill-confirm" role="dialog" aria-modal="true" aria-labelledby="autofill-confirm-title">
+        <div class="modal">
+            <h2 id="autofill-confirm-title">AutoFill Warning</h2>
+            <div class="modal-group">
+                <label>The front-face design will be applied to the other faces of the related body parts. Do you want to continue?</label>
+            </div>
+            <div class="modal-actions">
+                <button class="modal-btn" id="btn-autofill-cancel">Cancel</button>
+                <button class="modal-btn primary" id="btn-autofill-confirm">Apply</button>
             </div>
         </div>
     </div>
@@ -163,32 +176,32 @@
 
     <div class="modal-overlay" id="modal-3d-screenshot">
         <div class="modal">
-            <h2>3D Skin Ekran Görüntüsü</h2>
-            <div class="screenshot-preview"><img id="screenshot-3d-preview" alt="Şeffaf arka planlı skin ekran görüntüsü"></div>
+            <h2>3D Skin Screenshot</h2>
+            <div class="screenshot-preview"><img id="screenshot-3d-preview" alt="Skin screenshot with transparent background"></div>
             <div class="modal-actions">
-                <button class="modal-btn" id="btn-screenshot-close">Kapat</button>
-                <button class="modal-btn" id="btn-screenshot-copy">Kopyala</button>
-                <button class="modal-btn primary" id="btn-screenshot-download">İndir (PNG)</button>
+                <button class="modal-btn" id="btn-screenshot-close">Close</button>
+                <button class="modal-btn" id="btn-screenshot-copy">Copy</button>
+                <button class="modal-btn primary" id="btn-screenshot-download">Download (PNG)</button>
             </div>
         </div>
     </div>
 
     <div class="modal-overlay" id="modal-save-as">
         <div class="modal">
-            <h2>Farklı Kaydet</h2>
+            <h2>Save As</h2>
             <div class="modal-group">
-                <label for="save-as-name">Dosya adı</label>
+                <label for="save-as-name">File name</label>
                 <input type="text" id="save-as-name" maxlength="120" autocomplete="off">
             </div>
             <div class="modal-group">
-                <label for="save-as-format">Dosya türü</label>
+                <label for="save-as-format">File type</label>
                 <select id="save-as-format">
-                    <option value="png">PNG resmi (*.png)</option>
+                    <option value="png">PNG image (*.png)</option>
                 </select>
             </div>
             <div class="modal-actions">
-                <button class="modal-btn" id="btn-save-as-cancel">İptal Et</button>
-                <button class="modal-btn primary" id="btn-save-as-confirm">Kaydet...</button>
+                <button class="modal-btn" id="btn-save-as-cancel">Cancel</button>
+                <button class="modal-btn primary" id="btn-save-as-confirm">Save...</button>
             </div>
         </div>
     </div>
@@ -226,11 +239,14 @@
 
     <div class="workspace">
         
+        <div class="layer-panel-stack">
+            <canvas id="view-orientation-cube" width="118" height="118" role="button" tabindex="0"
+                title="Click a cube face to change the view" aria-label="3D camera orientation cube"></canvas>
         <div class="layer-manager-container">
             <div class="layer-maps">
                 <div class="layer-column">
                     <input type="checkbox" id="toggle-inner-all" class="master-toggle" checked
-                        title="Tüm Teni Aç/Kapat">
+                        title="Toggle All Base Layers">
                     <div class="body-map inner-map">
                         <div class="part head" data-layer="innerLayer" data-part="head"></div>
                         <div class="mid-row">
@@ -246,7 +262,7 @@
                 </div>
                 <div class="layer-column">
                     <input type="checkbox" id="toggle-outer-all" class="master-toggle"
-                        title="Tüm 3D Katmanları Aç/Kapat">
+                        title="Toggle All Outer Layers">
                     <div class="body-map outer-map">
                         <div class="part head off" data-layer="outerLayer" data-part="head"></div>
                         <div class="mid-row">
@@ -273,7 +289,7 @@
 
             <div class="action-buttons">
                 <button id="btn-action-mirror" class="action-btn"
-                    title="Kopyalanacak uzvu (sağ/sol) seçmek için tıklayın."><svg viewBox="0 0 24 24" fill="none"
+                    title="Click to choose the limb to copy (right/left)."><svg viewBox="0 0 24 24" fill="none"
                         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M16 3h5v5" />
                         <path d="M8 3H3v5" />
@@ -285,9 +301,9 @@
                         <path d="M21 21l-6-6" />
                         <path d="M3 21l6-6" />
                     </svg><span>Copy Limb</span></button>
-                <button id="tool-grid" class="action-btn" title="Izgarayı aç/kapat (G)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg><span>Grid</span></button>
+                <button id="tool-grid" class="action-btn" title="Toggle Grid (G)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg><span>Grid</span></button>
                 <button id="btn-action-filler" class="action-btn"
-                    title="Kafa hariç her parçanın ön yüzeyindeki tasarımı diğer tüm yüzeylere kaplar."><svg
+                    title="Applies each part's front-face design to its other faces, except the head."><svg
                         viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                         stroke-linejoin="round">
                         <path
@@ -296,7 +312,7 @@
                         <line x1="12" y1="22.08" x2="12" y2="12" />
                     </svg>AutoFill</button>
 
-                <button id="btn-action-guide" class="action-btn" title="2D parça rehberini açar/kapatır."
+                <button id="btn-action-guide" class="action-btn" title="Toggle the 2D part guide."
                     style="display: none;">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                         stroke-linejoin="round">
@@ -307,6 +323,11 @@
                     2D Guide
                 </button>
             </div>
+        </div>
+        <div class="history-navigation" aria-label="History actions">
+            <button id="btn-history-undo" type="button" title="Undo (Ctrl+Z)" aria-label="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 6 6v1"/></svg></button>
+            <button id="btn-history-redo" type="button" title="Redo (Ctrl+Y)" aria-label="Redo (Ctrl+Y)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0-6 6v1"/></svg></button>
+        </div>
         </div>
 
         <canvas id="editor-2d-canvas" style="display: none;"></canvas>
@@ -332,7 +353,7 @@
         </div>
 
         <canvas id="editor-3d-canvas" width="1200" height="900"></canvas>
-        <button id="btn-3d-screenshot" type="button" title="3D skin ekran görüntüsünü al" aria-label="3D skin ekran görüntüsünü al">
+        <button id="btn-3d-screenshot" type="button" title="Take a 3D skin screenshot" aria-label="Take a 3D skin screenshot">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M4 7h3l1.5-2h7L17 7h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z" />
                 <circle cx="12" cy="13" r="3.5" />
@@ -344,20 +365,17 @@
     <div id="window-hue-sat" class="adj-window" style="display: none;">
         <div class="adj-header"><span>Hue / Saturation</span><button class="adj-close-btn">&times;</button></div>
         <div class="adj-content">
-            <div class="modal-group">
-                <label>Hue: <span id="val-hue">0</span></label>
-                <input type="range" id="adj-hue" min="-180" max="180" value="0" class="styled-slider"
-                    style="background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); width: 100%;">
+            <div class="modal-group adjustment-control">
+                <div class="adjustment-control-header"><label for="adj-hue">Hue</label><div class="adjustment-value-controls"><button type="button" class="adjustment-step" data-adjustment-step="adj-hue" data-step="-1" aria-label="Hue değerini 1 azalt">−</button><input id="adj-hue-number" class="adjustment-number" type="number" min="-180" max="180" step="1" value="0" aria-label="Hue değeri"><button type="button" class="adjustment-step" data-adjustment-step="adj-hue" data-step="1" aria-label="Hue değerini 1 artır">+</button><button type="button" class="adjustment-reset" data-adjustment-reset="adj-hue" title="Hue sıfırla" aria-label="Hue sıfırla"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0 2 5.3"/><path d="M20 4v7h-7"/></svg></button></div></div>
+                <input type="range" id="adj-hue" min="-180" max="180" value="0" class="styled-slider" style="background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); width: 100%;">
             </div>
-            <div class="modal-group">
-                <label>Saturation: <span id="val-sat">100</span></label>
-                <input type="range" id="adj-sat" min="0" max="200" value="100" class="styled-slider"
-                    style="width: 100%;">
+            <div class="modal-group adjustment-control">
+                <div class="adjustment-control-header"><label for="adj-sat">Saturation</label><div class="adjustment-value-controls"><button type="button" class="adjustment-step" data-adjustment-step="adj-sat" data-step="-1" aria-label="Saturation değerini 1 azalt">−</button><input id="adj-sat-number" class="adjustment-number" type="number" min="0" max="200" step="1" value="100" aria-label="Saturation değeri"><button type="button" class="adjustment-step" data-adjustment-step="adj-sat" data-step="1" aria-label="Saturation değerini 1 artır">+</button><button type="button" class="adjustment-reset" data-adjustment-reset="adj-sat" title="Saturation sıfırla" aria-label="Saturation sıfırla"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0 2 5.3"/><path d="M20 4v7h-7"/></svg></button></div></div>
+                <input type="range" id="adj-sat" min="0" max="200" value="100" class="styled-slider" style="width: 100%;">
             </div>
-            <div class="modal-group">
-                <label>Lightness: <span id="val-light">0</span></label>
-                <input type="range" id="adj-light" min="-100" max="100" value="0" class="styled-slider"
-                    style="width: 100%;">
+            <div class="modal-group adjustment-control">
+                <div class="adjustment-control-header"><label for="adj-light">Lightness</label><div class="adjustment-value-controls"><button type="button" class="adjustment-step" data-adjustment-step="adj-light" data-step="-1" aria-label="Lightness değerini 1 azalt">−</button><input id="adj-light-number" class="adjustment-number" type="number" min="-100" max="100" step="1" value="0" aria-label="Lightness değeri"><button type="button" class="adjustment-step" data-adjustment-step="adj-light" data-step="1" aria-label="Lightness değerini 1 artır">+</button><button type="button" class="adjustment-reset" data-adjustment-reset="adj-light" title="Lightness sıfırla" aria-label="Lightness sıfırla"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0 2 5.3"/><path d="M20 4v7h-7"/></svg></button></div></div>
+                <input type="range" id="adj-light" min="-100" max="100" value="0" class="styled-slider" style="width: 100%;">
             </div>
             <div class="modal-actions" style="margin-top: 15px;">
                 <button class="modal-btn" id="btn-hue-cancel">Cancel</button>
@@ -369,15 +387,13 @@
     <div id="window-bri-con" class="adj-window" style="display: none;">
         <div class="adj-header"><span>Brightness / Contrast</span><button class="adj-close-btn">&times;</button></div>
         <div class="adj-content">
-            <div class="modal-group">
-                <label>Brightness: <span id="val-bri">0</span></label>
-                <input type="range" id="adj-bri" min="-100" max="100" value="0" class="styled-slider"
-                    style="width: 100%;">
+            <div class="modal-group adjustment-control">
+                <div class="adjustment-control-header"><label for="adj-bri">Brightness</label><div class="adjustment-value-controls"><button type="button" class="adjustment-step" data-adjustment-step="adj-bri" data-step="-1" aria-label="Brightness değerini 1 azalt">−</button><input id="adj-bri-number" class="adjustment-number" type="number" min="-100" max="100" step="1" value="0" aria-label="Brightness değeri"><button type="button" class="adjustment-step" data-adjustment-step="adj-bri" data-step="1" aria-label="Brightness değerini 1 artır">+</button><button type="button" class="adjustment-reset" data-adjustment-reset="adj-bri" title="Brightness sıfırla" aria-label="Brightness sıfırla"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0 2 5.3"/><path d="M20 4v7h-7"/></svg></button></div></div>
+                <input type="range" id="adj-bri" min="-100" max="100" value="0" class="styled-slider" style="width: 100%;">
             </div>
-            <div class="modal-group">
-                <label>Contrast: <span id="val-con">0</span></label>
-                <input type="range" id="adj-con" min="-100" max="100" value="0" class="styled-slider"
-                    style="width: 100%;">
+            <div class="modal-group adjustment-control">
+                <div class="adjustment-control-header"><label for="adj-con">Contrast</label><div class="adjustment-value-controls"><button type="button" class="adjustment-step" data-adjustment-step="adj-con" data-step="-1" aria-label="Contrast değerini 1 azalt">−</button><input id="adj-con-number" class="adjustment-number" type="number" min="-100" max="100" step="1" value="0" aria-label="Contrast değeri"><button type="button" class="adjustment-step" data-adjustment-step="adj-con" data-step="1" aria-label="Contrast değerini 1 artır">+</button><button type="button" class="adjustment-reset" data-adjustment-reset="adj-con" title="Contrast sıfırla" aria-label="Contrast sıfırla"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0 2 5.3"/><path d="M20 4v7h-7"/></svg></button></div></div>
+                <input type="range" id="adj-con" min="-100" max="100" value="0" class="styled-slider" style="width: 100%;">
             </div>
             <div class="modal-actions" style="margin-top: 15px;">
                 <button class="modal-btn" id="btn-bri-cancel">Cancel</button>
@@ -418,7 +434,7 @@
         <div class="modal">
             <h2>Resize Skin</h2>
             <div class="modal-group">
-                <label>Yeni çözünürlük</label>
+                <label>New resolution</label>
                 <select id="resize-skin-resolution">
                     <option value="64">64 × 64</option>
                     <option value="128">128 × 128</option>
@@ -439,11 +455,11 @@
     <div id="window-color-panel" class="adj-window tool-window" style="display: flex; top: 60px; left: 20px; width: 240px; z-index: 1000;">
         <div class="adj-header"><span>Color</span><button class="adj-close-btn">&times;</button></div>
         <div class="adj-content" style="padding: 10px; display: flex; flex-direction: column; align-items: center;">
-            <div class="color-wheel-modes" aria-label="Renk çarkı modu">
-                <button class="color-wheel-mode active" id="color-wheel-triangle" type="button" title="Üçgen renk çarkı" aria-label="Üçgen renk çarkı">
+            <div class="color-wheel-modes" aria-label="Color wheel mode">
+                <button class="color-wheel-mode active" id="color-wheel-triangle" type="button" title="Triangle color wheel" aria-label="Triangle color wheel">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4 3 20h18L12 4Z"/></svg>
                 </button>
-                <button class="color-wheel-mode" id="color-wheel-square" type="button" title="Kare renk çarkı" aria-label="Kare renk çarkı">
+                <button class="color-wheel-mode" id="color-wheel-square" type="button" title="Square color wheel" aria-label="Square color wheel">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="1"/></svg>
                 </button>
             </div>
@@ -454,22 +470,22 @@
                 <div class="slider-group" style="justify-content: space-between;">
                     <span style="color:#ff4d4d; width:12px;">H</span>
                     <input type="range" id="slider-h" class="styled-slider" min="0" max="360" value="0" style="width: 120px;">
-                    <span id="val-slider-h" style="width:30px; text-align:right; color:#ccc;">0&deg;</span>
+                    <div class="hsl-value-control"><input id="val-slider-h" class="hsl-value-input" type="number" min="0" max="360" step="1" value="0" aria-label="Hue değeri"><span class="hsl-step-buttons"><button type="button" data-hsl-step="h" data-step="1" aria-label="Hue değerini 1 artır"><svg viewBox="0 0 12 12"><path d="m2.5 7 3.5-3 3.5 3"/></svg></button><button type="button" data-hsl-step="h" data-step="-1" aria-label="Hue değerini 1 azalt"><svg viewBox="0 0 12 12"><path d="m2.5 5 3.5 3 3.5-3"/></svg></button></span></div>
                 </div>
                 <div class="slider-group" style="justify-content: space-between;">
                     <span style="color:#38ef7d; width:12px;">S</span>
                     <input type="range" id="slider-s" class="styled-slider" min="0" max="100" value="0" style="width: 120px;">
-                    <span id="val-slider-s" style="width:30px; text-align:right; color:#ccc;">0%</span>
+                    <div class="hsl-value-control"><input id="val-slider-s" class="hsl-value-input" type="number" min="0" max="100" step="1" value="0" aria-label="Saturation değeri"><span class="hsl-step-buttons"><button type="button" data-hsl-step="s" data-step="1" aria-label="Saturation değerini 1 artır"><svg viewBox="0 0 12 12"><path d="m2.5 7 3.5-3 3.5 3"/></svg></button><button type="button" data-hsl-step="s" data-step="-1" aria-label="Saturation değerini 1 azalt"><svg viewBox="0 0 12 12"><path d="m2.5 5 3.5 3 3.5-3"/></svg></button></span></div>
                 </div>
                 <div class="slider-group" style="justify-content: space-between;">
                     <span style="color:#00C9FF; width:12px;">L</span>
                     <input type="range" id="slider-l" class="styled-slider" min="0" max="100" value="0" style="width: 120px;">
-                    <span id="val-slider-l" style="width:30px; text-align:right; color:#ccc;">0%</span>
+                    <div class="hsl-value-control"><input id="val-slider-l" class="hsl-value-input" type="number" min="0" max="100" step="1" value="0" aria-label="Lightness değeri"><span class="hsl-step-buttons"><button type="button" data-hsl-step="l" data-step="1" aria-label="Lightness değerini 1 artır"><svg viewBox="0 0 12 12"><path d="m2.5 7 3.5-3 3.5 3"/></svg></button><button type="button" data-hsl-step="l" data-step="-1" aria-label="Lightness değerini 1 azalt"><svg viewBox="0 0 12 12"><path d="m2.5 5 3.5 3 3.5-3"/></svg></button></span></div>
                 </div>
                 <div class="slider-group" style="justify-content: space-between;">
                     <span style="color:#aaa; width:12px;">A</span>
                     <div class="alpha-wrapper" style="width: 120px;"><input type="range" id="slider-a" class="styled-slider" min="0" max="100" value="100" style="width: 100%;"></div>
-                    <span id="val-slider-a" style="width:30px; text-align:right; color:#ccc;">100%</span>
+                    <div class="hsl-value-control"><input id="val-slider-a" class="hsl-value-input" type="number" min="0" max="100" step="1" value="100" aria-label="Alpha değeri"><span class="hsl-step-buttons"><button type="button" data-hsl-step="a" data-step="1" aria-label="Alpha değerini 1 artır"><svg viewBox="0 0 12 12"><path d="m2.5 7 3.5-3 3.5 3"/></svg></button><button type="button" data-hsl-step="a" data-step="-1" aria-label="Alpha değerini 1 azalt"><svg viewBox="0 0 12 12"><path d="m2.5 5 3.5 3 3.5-3"/></svg></button></span></div>
                 </div>
                 <div class="slider-group" id="group-tol" style="display: none; justify-content: space-between;">
                     <span style="color:#ffd700; width:12px;">T</span>
@@ -486,7 +502,7 @@
                         <span id="val-brush-size" style="width:18px; text-align:right; color:#ccc;">4</span>
                     </div>
                     <div class="slider-group" style="justify-content: space-between;">
-                        <span style="color:#fff; font-size:10px; width: 45px; text-align: left;">SERTLİK</span>
+                        <span style="color:#fff; font-size:10px; width: 45px; text-align: left;">HARDNESS</span>
                         <div class="alpha-wrapper" style="background:#444; width: 95px;">
                             <input type="range" id="slider-brush-hard" class="styled-slider" min="0" max="100" value="15" style="width: 100%;">
                         </div>
@@ -497,13 +513,13 @@
 
             <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; margin: 15px 0 10px 0;">
                 <div class="color-boxes" style="position: relative; width: 50px; height: 50px; margin: 0; display: block;">
-                    <button id="btn-default-colors" style="position: absolute; left: -8px; bottom: -8px; width: 22px; height: 22px; padding: 2px; background: transparent; border: none; cursor: pointer; z-index: 5; color: #888; transition: 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#888'" title="Varsayılan Renkler (D)">
+                    <button id="btn-default-colors" style="position: absolute; left: -8px; bottom: -8px; width: 22px; height: 22px; padding: 2px; background: transparent; border: none; cursor: pointer; z-index: 5; color: #888; transition: 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#888'" title="Default Colors (D)">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter">
                             <rect x="11" y="11" width="11" height="11" fill="#fff" />
                             <rect x="2" y="2" width="11" height="11" fill="#000" />
                         </svg>
                     </button>
-                    <button class="swap-btn" id="swap-colors" style="position: absolute; right: -12px; top: -8px; width: 22px; height: 22px; padding: 2px; background: transparent; border: none; z-index: 5; color: #888; transition: 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#888'" title="Renkleri Değiştir (X)">
+                    <button class="swap-btn" id="swap-colors" style="position: absolute; right: -12px; top: -8px; width: 22px; height: 22px; padding: 2px; background: transparent; border: none; z-index: 5; color: #888; transition: 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#888'" title="Swap Colors (X)">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square" stroke-linejoin="miter">
                             <path d="M9 2L4 7l5 5 M4 7h13v13 M12 15l5 5 5-5" />
                         </svg>
@@ -542,19 +558,19 @@
                 <!-- JS ile dinamik eklenecek -->
             </div>
             <div class="layer-actions">
-                <button class="layer-btn" id="btn-layer-new" title="Yeni Katman">
+                <button class="layer-btn" id="btn-layer-new" title="New Layer">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14" /></svg>
                 </button>
-                <button class="layer-btn" id="btn-layer-del" title="Katmanı Sil">
+                <button class="layer-btn" id="btn-layer-del" title="Delete Layer">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
                 </button>
-                <button class="layer-btn" id="btn-layer-dup" title="Katmanı Çoğalt">
+                <button class="layer-btn" id="btn-layer-dup" title="Duplicate Layer">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
                 </button>
-                <button class="layer-btn" id="btn-layer-merge" title="Alt Katmanla Birleştir">
+                <button class="layer-btn" id="btn-layer-merge" title="Merge with Layer Below">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M12 15l-4-4M12 15l4-4M20 21H4" /></svg>
                 </button>
-                <button class="layer-btn" id="btn-layer-import" title="Doku Yükle (Texture)">
+                <button class="layer-btn" id="btn-layer-import" title="Import Texture">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" /></svg>
                 </button>
             </div>
@@ -571,21 +587,21 @@
         <div class="adj-content" style="padding: 4px; display: flex; flex-direction: column; gap: 6px; align-items: center;">
             <div class="tools-grid" style="display: flex; flex-direction: column; gap: 4px; justify-content: center; width: 100%; padding: 0; border: none;">
                 
-                <button class="tool-btn active" id="tool-brush" title="Kalem (B)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></svg></button>
-                <button class="tool-btn" id="tool-eraser" title="Silgi (E)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21" /><path d="M22 21H7" /><path d="m5 11 9 9" /></svg></button>
-                <button class="tool-btn" id="tool-picker" title="Renk Seçici (I)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 22 1-1h3l9-9" /><path d="M3 21v-3l9-9" /><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z" /></svg></button>
+                <button class="tool-btn active" id="tool-brush" title="Pencil (B)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></svg></button>
+                <button class="tool-btn" id="tool-eraser" title="Eraser (E)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21" /><path d="M22 21H7" /><path d="m5 11 9 9" /></svg></button>
+                <button class="tool-btn" id="tool-picker" title="Color Picker (I)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 22 1-1h3l9-9" /><path d="M3 21v-3l9-9" /><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z" /></svg></button>
                 
                 <div class="toolbar-separator"></div>
                 
-                <button class="tool-btn" id="tool-round_brush" title="Fırça (R)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08" /><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z" /></svg></button>
-                <button class="tool-btn" id="tool-bucket" title="Boya Kovası (F)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z" /><path d="m5 2 5 5" /><path d="M2 13h15" /><path d="M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z" /></svg></button>
+                <button class="tool-btn" id="tool-round_brush" title="Round Brush (R)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08" /><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z" /></svg></button>
+                <button class="tool-btn" id="tool-bucket" title="Paint Bucket (F)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z" /><path d="m5 2 5 5" /><path d="M2 13h15" /><path d="M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z" /></svg></button>
 
                 <div class="toolbar-separator"></div>
 
                 <div class="tool-2d-only" style="display: none; flex-direction: column; gap: 6px; justify-content: center; width: 100%;">
-                    <button class="tool-btn" id="tool-rect_select" title="Seçim (S)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /></svg></button>
-                    <button class="tool-btn" id="tool-magic_wand" title="Sihirli Değnek (W)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2" /><path d="M15 16v-2" /><path d="M8 9h2" /><path d="M20 9h2" /><path d="M17.8 11.8l1.4 1.4" /><path d="M10.6 6.2l-1.4-1.4" /><path d="M17.8 6.2l1.4-1.4" /><path d="M10.6 11.8l-1.4 1.4" /><path d="m3 21 9-9" /><path d="M12.2 9.8l2 2" /></svg></button>
-                    <button class="tool-btn" id="tool-transform" title="Taşı (V)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 2 12 5 15" /><polyline points="9 5 12 2 15 5" /><polyline points="19 9 22 12 19 15" /><polyline points="9 19 12 22 15 19" /><line x1="2" y1="12" x2="22" y2="12" /><line x1="12" y1="2" x2="12" y2="22" /></svg></button>
+                    <button class="tool-btn" id="tool-rect_select" title="Rectangle Select (S)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /></svg></button>
+                    <button class="tool-btn" id="tool-magic_wand" title="Magic Wand (W)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2" /><path d="M15 16v-2" /><path d="M8 9h2" /><path d="M20 9h2" /><path d="M17.8 11.8l1.4 1.4" /><path d="M10.6 6.2l-1.4-1.4" /><path d="M17.8 6.2l1.4-1.4" /><path d="M10.6 11.8l-1.4 1.4" /><path d="m3 21 9-9" /><path d="M12.2 9.8l2 2" /></svg></button>
+                    <button class="tool-btn" id="tool-transform" title="Move Selection (V)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 2 12 5 15" /><polyline points="9 5 12 2 15 5" /><polyline points="19 9 22 12 19 15" /><polyline points="9 19 12 22 15 19" /><line x1="2" y1="12" x2="22" y2="12" /><line x1="12" y1="2" x2="12" y2="22" /></svg></button>
                 </div>
             </div>
         </div>

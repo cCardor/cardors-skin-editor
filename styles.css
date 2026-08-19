@@ -1432,7 +1432,12 @@ body::before {
 .tool-btn.active { border-color: transparent; background: linear-gradient(135deg, var(--ui-accent-strong), var(--ui-violet)); box-shadow: 0 5px 15px rgba(46, 190, 199, .26); }
 .toolbar-separator { width: 72%; background: var(--ui-border); }
 
-.action-buttons { gap: 7px; }
+.action-buttons {
+    gap: 7px;
+    /* 3D'de üç, 2D'de iki eylem görünür. Panelin dikey merkezi sabit kalır. */
+    min-height: 127px;
+    box-sizing: border-box;
+}
 .action-btn {
     min-height: 34px;
     color: #c3d0e6;
@@ -1632,6 +1637,26 @@ body::before { opacity: .16; background-image: linear-gradient(rgba(255,255,255,
 .shortcut-key-btn.listening { background: #444 !important; border-color: #cfcfcf !important; }
 .screenshot-preview { border-color: rgba(255,255,255,.15) !important; }
 
+/* Kısayol listesi: araç simgesi ve eşit boyutlu tuş kutuları. */
+#modal-shortcuts .modal { width: min(390px, calc(100vw - 32px)); }
+.shortcut-item { min-height: 46px; padding: 7px 10px !important; }
+.shortcut-tool { display: inline-flex; align-items: center; min-width: 0; gap: 9px; color: #e2e2e2; }
+.shortcut-tool > svg { flex: 0 0 auto; width: 19px; height: 19px; color: #bdbdbd; }
+.shortcut-tool > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shortcut-key-btn {
+    box-sizing: border-box;
+    flex: 0 0 54px;
+    width: 54px;
+    min-width: 54px;
+    height: 31px;
+    padding: 0 4px !important;
+    overflow: hidden;
+    font-size: 11px !important;
+    line-height: 29px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* Renk geçmişi: dış çizgi doğrudan SVG'de, tarayıcıda bulanık piksel kenarlığı yok. */
 .history-swatch {
     display: block;
@@ -1671,6 +1696,210 @@ body::before { opacity: .16; background-image: linear-gradient(rgba(255,255,255,
 .layer-vis-btn.is-visible { color: #e0e0e0; }
 .layer-vis-btn.is-hidden { color: #8d8d8d; background: rgba(255,255,255,.035); }
 .layer-vis-btn.is-hidden:hover { color: #f2f2f2; }
+
+/* Referans pencereleri: ana arayüzle aynı, sade koyu panel dili. */
+.ref-window {
+    background: #171717 !important;
+    border: 1px solid rgba(255,255,255,.14) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 20px 52px rgba(0,0,0,.56), inset 0 1px rgba(255,255,255,.04) !important;
+    overflow: hidden;
+}
+.ref-header {
+    min-height: 38px;
+    height: 38px;
+    padding: 0 8px 0 12px;
+    color: #e8e8e8 !important;
+    background: linear-gradient(90deg, #2a2a2a, #202020) !important;
+    border-bottom: 1px solid rgba(255,255,255,.1) !important;
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: .3px;
+}
+.ref-title { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.ref-title svg { width: 15px; height: 15px; fill: none; stroke: #bdbdbd; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.ref-controls { gap: 4px; }
+.ref-btn {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 25px;
+    height: 25px;
+    padding: 0;
+    color: #bfbfbf;
+    background: rgba(255,255,255,.055);
+    border: 1px solid rgba(255,255,255,.09);
+    border-radius: 6px;
+    box-shadow: none;
+}
+.ref-btn svg { display: block; width: 14px; height: 14px; margin: auto; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.ref-btn:hover { color: #fff; background: #3a3a3a; border-color: rgba(255,255,255,.24); }
+.ref-control-divider { width: 1px; height: 16px; margin: 0 2px; background: rgba(255,255,255,.12); }
+.ref-close-btn { color: #d0d0d0 !important; }
+.ref-close-btn:hover { color: #fff !important; background: #4a2525 !important; border-color: #d86969 !important; }
+.ref-content { background: repeating-conic-gradient(#252525 0% 25%, #171717 0% 50%) 50% / 12px 12px !important; }
+.ref-canvas { image-rendering: auto; }
+.pixel-reference .ref-canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
+
+/* Ayarlama satırları: sayısal giriş, ±1 ve bağımsız sıfırlama kontrolleri. */
+.adjustment-control { gap: 7px; margin-bottom: 12px; }
+.adjustment-control-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.adjustment-control-header label { margin: 0; color: #d6d6d6; font-size: 12px; }
+.adjustment-value-controls { display: inline-flex; align-items: center; gap: 3px; }
+.adjustment-step, .adjustment-reset {
+    appearance: none;
+    -webkit-appearance: none;
+    display: grid;
+    place-items: center;
+    width: 23px;
+    height: 23px;
+    padding: 0;
+    color: #cfcfcf;
+    background: #282828;
+    border: 1px solid rgba(255,255,255,.11);
+    border-radius: 5px;
+    cursor: pointer;
+    font: 600 15px/1 system-ui, sans-serif;
+}
+.adjustment-step:hover, .adjustment-reset:hover { color: #fff; background: #3a3a3a; border-color: rgba(255,255,255,.25); }
+.adjustment-reset { margin-left: 3px; }
+.adjustment-reset svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.adjustment-number {
+    width: 48px;
+    height: 23px;
+    padding: 2px 4px;
+    color: #ededed;
+    background: #171717;
+    border: 1px solid rgba(255,255,255,.15);
+    border-radius: 5px;
+    outline: none;
+    text-align: center;
+    font: 600 11px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.adjustment-number:focus { border-color: #bdbdbd; box-shadow: 0 0 0 2px rgba(255,255,255,.1); }
+.adjustment-number::-webkit-inner-spin-button, .adjustment-number::-webkit-outer-spin-button { appearance: none; margin: 0; }
+
+/* Renk çarkı HSL değerleri: tıklanabilir, +/- 1 adımlı sayı alanları. */
+.hsl-value-input {
+    box-sizing: border-box;
+    width: 43px;
+    height: 23px;
+    padding: 1px 2px 1px 5px;
+    color: #dedede;
+    background: #171717;
+    border: 1px solid rgba(255,255,255,.18);
+    border-radius: 4px;
+    outline: none;
+    cursor: ns-resize;
+    text-align: right;
+    font: 600 11px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+    transition: border-color .16s ease, background .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+.hsl-value-input:hover { color: #fff; background: #2b2b2b; border-color: rgba(255,255,255,.44); box-shadow: 0 3px 8px rgba(0,0,0,.28); transform: translateY(-1px); }
+.hsl-value-input:focus { cursor: text; color: #fff; border-color: #d6d6d6; box-shadow: 0 0 0 2px rgba(255,255,255,.12); }
+.hsl-value-input::-webkit-inner-spin-button, .hsl-value-input::-webkit-outer-spin-button { opacity: .8; }
+.hsl-value-control { display: inline-flex; width: 44px; height: 23px; overflow: hidden; background: #171717; border: 1px solid rgba(255,255,255,.18); border-radius: 4px; transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
+.hsl-value-control:hover { border-color: rgba(255,255,255,.38); box-shadow: 0 3px 8px rgba(0,0,0,.28); transform: translateY(-1px); }
+.hsl-value-control:focus-within { border-color: #d6d6d6; box-shadow: 0 0 0 2px rgba(255,255,255,.12); }
+.hsl-value-control .hsl-value-input { width: 30px; height: 21px; padding: 1px 2px 1px 4px; border: 0; border-radius: 0; box-shadow: none; transform: none; }
+.hsl-value-control .hsl-value-input:hover, .hsl-value-control .hsl-value-input:focus { background: #222; box-shadow: none; transform: none; }
+.hsl-value-control .hsl-value-input::-webkit-inner-spin-button, .hsl-value-control .hsl-value-input::-webkit-outer-spin-button { appearance: none; margin: 0; }
+.hsl-step-buttons { display: flex; flex-direction: column; width: 12px; border-left: 1px solid rgba(255,255,255,.09); }
+.hsl-step-buttons button { appearance: none; -webkit-appearance: none; display: grid; place-items: center; width: 12px; height: 10.5px; padding: 0; color: #888; background: #202020; border: 0; cursor: pointer; }
+.hsl-step-buttons button + button { border-top: 1px solid rgba(255,255,255,.07); }
+.hsl-step-buttons button:hover { color: #e6e6e6; background: #353535; }
+.hsl-step-buttons svg { width: 9px; height: 9px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Sürüklenebilir araç, ayarlama ve referans pencereleri menü çubuğunun üstünde kalır. */
+.adj-window, .ref-window { z-index: 30001 !important; }
+.menu-bar:has(.menu-item.active) { z-index: 30002; }
+#window-layers-panel .layer-list { height: 210px !important; }
+
+/* Kamera önizlemesi sabit genişlikte dama alanı oluşturmaz; görsel kadar yer kaplar. */
+#modal-3d-screenshot .modal {
+    width: fit-content !important;
+    min-width: 0;
+    max-width: calc(100vw - 32px);
+}
+#modal-3d-screenshot .screenshot-preview {
+    width: fit-content;
+    min-width: 0;
+    min-height: 0;
+    max-width: calc(100vw - 72px);
+    margin-inline: auto;
+    overflow: hidden;
+}
+#modal-3d-screenshot #screenshot-3d-preview {
+    width: auto;
+    height: auto;
+    max-width: min(80vw, 520px);
+    max-height: min(58vh, 520px);
+}
+#modal-3d-screenshot .modal-actions { justify-content: center; flex-wrap: wrap; }
+
+/* Katman paneli, 3D yön küpü ve geçmiş kontrollerini tek bir sütunda toplar. */
+.layer-panel-stack {
+    /* Tuvalin 2D/3D ölçüsü değişse de panel ekranın aynı yüksekliğinde kalır. */
+    position: fixed;
+    top: 50vh;
+    right: 18px;
+    z-index: 30;
+    display: block;
+    transform: translateY(-50%);
+}
+.layer-panel-stack .layer-manager-container {
+    position: static;
+    right: auto;
+    top: auto;
+    z-index: auto;
+    transform: none;
+}
+#view-orientation-cube {
+    position: absolute;
+    bottom: calc(100% + 11px);
+    left: 50%;
+    display: block;
+    width: 118px;
+    height: 118px;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    cursor: pointer;
+    transform: translateX(-50%);
+    filter: brightness(1);
+    transition: filter .16s ease;
+}
+#view-orientation-cube:hover, #view-orientation-cube:focus-visible {
+    outline: none;
+    filter: brightness(1.35);
+}
+.history-navigation {
+    position: absolute;
+    top: calc(100% + 11px);
+    left: 50%;
+    display: flex;
+    gap: 8px;
+    transform: translateX(-50%);
+}
+.history-navigation button {
+    display: grid;
+    width: 38px;
+    height: 34px;
+    padding: 0;
+    place-items: center;
+    color: #cfcfcf;
+    background: linear-gradient(145deg, #303030, #1b1b1b);
+    border: 1px solid rgba(255,255,255,.17);
+    border-radius: 8px;
+    box-shadow: 0 5px 13px rgba(0,0,0,.28);
+    cursor: pointer;
+    transition: color .16s ease, background .16s ease, border-color .16s ease;
+}
+.history-navigation button:hover {
+    color: #fff;
+    background: #404040;
+    border-color: rgba(255,255,255,.45);
+}
+.history-navigation svg { width: 19px; height: 19px; }
 
 /* Dosya sekmeleri: menünün altında, tuval alanının sol başlangıcında. */
 #document-tabs-container {
