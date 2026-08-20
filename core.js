@@ -144,34 +144,25 @@ function drawGrid() {
         return;
     }
 
-    const containerRect = container2D.getBoundingClientRect();
-    const wrapperRect = wrapper2D.getBoundingClientRect();
-    const width = Math.max(1, Math.round(wrapperRect.width));
-    const height = Math.max(1, Math.round(wrapperRect.height));
-    const scaleX = 512 / width;
-    const scaleY = 512 / height;
-    const step = width / SKIN_RES;
-
-    gridSvg.style.left = `${Math.round(wrapperRect.left - containerRect.left)}px`;
-    gridSvg.style.top = `${Math.round(wrapperRect.top - containerRect.top)}px`;
-    gridSvg.style.width = `${width}px`;
-    gridSvg.style.height = `${height}px`;
+    // Grid'i tuvalle aynı wrapper içine koyuyoruz. Böylece pan/zoom sırasında
+    // hesaplanan ekran koordinatlarına ve yuvarlamaya bağlı kalmadan canvas'ın
+    // dönüşümünü birebir devralır.
+    const step = 512 / SKIN_RES;
 
     const commands = [];
     for (let i = 0; i <= SKIN_RES; i++) {
-        // Çizgileri her yakınlaştırmada fiziksel ekran pikseline hizala.
-        const x = (Math.round(i * step) + 0.5) * scaleX;
-        const y = (Math.round(i * step) + 0.5) * scaleY;
+        const x = i * step;
+        const y = i * step;
         commands.push(`M ${x} 0 V 512 M 0 ${y} H 512`);
     }
     // Tek path kullanımı kesişimlerde ikinci kez boyamayı engeller.
-    gridSvg.innerHTML = `<path d="${commands.join(' ')}" fill="none" stroke="#ffffff" stroke-opacity="1" stroke-width="0.35" vector-effect="non-scaling-stroke" shape-rendering="crispEdges"/>`;
+    gridSvg.innerHTML = `<path d="${commands.join(' ')}" fill="none" stroke="#ffffff" stroke-opacity="0.25" stroke-width="0.35" vector-effect="non-scaling-stroke" shape-rendering="crispEdges"/>`;
     gridSvg.style.display = 'block';
 }
 
 function drawGridOn3DTexture() {
-    const step = 512 / SKIN_RES;
-    renderCtx.save();
+    const textureSize = 512;
+    const step = textureSize / SKIN_RES;
 
     // Grid atlasını parça bazında oluştur: bir dış katman açıksa yalnız o
     // parçanın overlay UV'si grid alır; diğer parçalar temel UV gridini korur.
@@ -184,27 +175,83 @@ function drawGridOn3DTexture() {
         leftLeg:  { base: [16, 48, 16, 16], outer: [0, 48, 16, 16] },
         leftArm:  { base: [32, 48, 16, 16], outer: [48, 48, 16, 16] }
     };
-    renderCtx.beginPath();
+    // Çizgileri yüksek çözünürlüklü texture üzerinde tek fiziksel piksel
+    // olarak işaretle. Canvas stroke'u kesişimlerde iki kez yarı saydam piksel
+    // ürettiği için köşeler daha koyu görünüyordu.
+    const gridMask = new Uint8Array(textureSize * textureSize);
+    const gridSource = new Int32Array(textureSize * textureSize);
+    gridSource.fill(-1);
+    const mark = (x, y, sourceX, sourceY) => {
+        if (x < 0 || x >= textureSize || y < 0 || y >= textureSize) return;
+        const index = y * textureSize + x;
+        // Bir köşe hem yatay hem dikey çizgiye denk gelse bile ilk işaretleme
+        // korunur; bu sayede aynı piksel birden fazla kez işlenmez.
+        if (!gridMask[index]) {
+            gridMask[index] = 1;
+            gridSource[index] = Math.max(0, Math.min(textureSize - 1, sourceY)) * textureSize + Math.max(0, Math.min(textureSize - 1, sourceX));
+        }
+    };
     Object.entries(partRegions).forEach(([part, regions]) => {
         const outerPart = document.querySelector(`.outer-map .part[data-part="${part}"]`);
-        const region = outerPart && !outerPart.classList.contains('off') ? regions.outer : regions.base;
+        const usesOuterLayer = outerPart && !outerPart.classList.contains('off');
+        const region = usesOuterLayer ? regions.outer : regions.base;
         const [x, y, w, h] = region;
-        renderCtx.rect(x * atlasScale, y * atlasScale, w * atlasScale, h * atlasScale);
-    });
-    renderCtx.clip();
+        const left = Math.round(x * atlasScale);
+        const top = Math.round(y * atlasScale);
+        const right = Math.min(textureSize - 1, Math.round((x + w) * atlasScale) - 1);
+        const bottom = Math.min(textureSize - 1, Math.round((y + h) * atlasScale) - 1);
+        const baseLeft = Math.round(regions.base[0] * atlasScale);
+        const baseTop = Math.round(regions.base[1] * atlasScale);
 
-    // Difference, her skin renginin tersini üretir: koyu skinte açık, açık skinte koyu grid.
-    renderCtx.globalCompositeOperation = 'difference';
-    renderCtx.strokeStyle = '#ffffff';
-    renderCtx.lineWidth = 0.35;
-    renderCtx.beginPath();
-    for (let i = 0; i <= SKIN_RES; i++) {
-        const p = i * step + 0.5;
-        renderCtx.moveTo(p, 0); renderCtx.lineTo(p, 512);
-        renderCtx.moveTo(0, p); renderCtx.lineTo(512, p);
+        for (let gridX = left; gridX <= right; gridX += step) {
+            const lineX = Math.round(gridX);
+            for (let pixelY = top; pixelY <= bottom; pixelY++) {
+                const sourceX = usesOuterLayer ? baseLeft + lineX - left : lineX;
+                const sourceY = usesOuterLayer ? baseTop + pixelY - top : pixelY;
+                mark(lineX, pixelY, sourceX, sourceY);
+            }
+        }
+        for (let gridY = top; gridY <= bottom; gridY += step) {
+            const lineY = Math.round(gridY);
+            for (let pixelX = left; pixelX <= right; pixelX++) {
+                const sourceX = usesOuterLayer ? baseLeft + pixelX - left : pixelX;
+                const sourceY = usesOuterLayer ? baseTop + lineY - top : lineY;
+                mark(pixelX, lineY, sourceX, sourceY);
+            }
+        }
+    });
+
+    // Beyazla "difference" uygulamanın eşdeğeri RGB kanallarını tersine
+    // çevirmektir. Her nokta maskede yalnız bir kez işaretlendiğinden,
+    // kesişimler çizginin geri kalanıyla tamamen aynı tonda kalır.
+    const texture = renderCtx.getImageData(0, 0, textureSize, textureSize);
+    const data = texture.data;
+    const gridOpacity = 0.18;
+    const transparentGridAlpha = Math.round(255 * gridOpacity);
+    for (let index = 0; index < gridMask.length; index++) {
+        if (!gridMask[index]) continue;
+        const offset = index * 4;
+        const sourceOffset = (gridSource[index] >= 0 ? gridSource[index] : index) * 4;
+        const pixelAlpha = data[offset + 3];
+
+        if (pixelAlpha === 0) {
+            // Dış katmanın şeffaf bir pikselinde de çizgi görünsün. Rengi,
+            // alttaki temel texture'dan alıp tersine çeviriyoruz; bu nedenle
+            // grid skin renginin karşıtı olarak görünmeye devam eder.
+            const sourceIsVisible = data[sourceOffset + 3] > 0;
+            data[offset] = sourceIsVisible ? 255 - data[sourceOffset] : 150;
+            data[offset + 1] = sourceIsVisible ? 255 - data[sourceOffset + 1] : 150;
+            data[offset + 2] = sourceIsVisible ? 255 - data[sourceOffset + 2] : 150;
+            data[offset + 3] = transparentGridAlpha;
+        } else {
+            // Düşük opaklıklı karşıt renk: hem çizgi çok daha ince algılanır
+            // hem de skin renkleri önceki kadar sert değişmez.
+            data[offset] = Math.round(data[offset] * (1 - gridOpacity) + (255 - data[offset]) * gridOpacity);
+            data[offset + 1] = Math.round(data[offset + 1] * (1 - gridOpacity) + (255 - data[offset + 1]) * gridOpacity);
+            data[offset + 2] = Math.round(data[offset + 2] * (1 - gridOpacity) + (255 - data[offset + 2]) * gridOpacity);
+        }
     }
-    renderCtx.stroke();
-    renderCtx.restore();
+    renderCtx.putImageData(texture, 0, 0);
 }
 
 function draw2DGuide() {
@@ -881,6 +928,9 @@ function init3DViewer() {
         viewer3d.camera.position.set(0, 8, 60);
         if (viewer3d.controls) {
             viewer3d.controls.enableZoom = true; viewer3d.controls.enableRotate = true; viewer3d.controls.target.set(0, 8, 0);
+            // OrbitControls varsayılanında sağ tuş kaydırma içindir; editörde her iki
+            // fare tuşuyla da modeli döndürmek istiyoruz.
+            if (viewer3d.controls.mouseButtons && THREE.MOUSE) viewer3d.controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
             viewer3d.controls.addEventListener?.('change', updateOrientationCube);
         }
         viewer3d.scene.background = new THREE.Color(bgPicker.value);
@@ -1500,9 +1550,16 @@ function drawOn3D(intersects, e = null) {
 }
 
 canvas3d.addEventListener('mousemove', (e) => {
-    if (e.buttons === 2 && activeTool !== 'picker' && activeTool !== 'brush' && !isBucketMode) isPanning = true;
+    // Sağ tuş her araçta 3D görünümü döndürür; çizim veya renk alma başlatmaz.
+    if ((e.buttons & 2) && !isDrawing) {
+        isRotating = true;
+        isPanning = false;
+        viewer3d.controls.enableRotate = true;
+        canvas3d.style.cursor = 'grabbing';
+        return;
+    }
 
-    const intersects = getIntersects(e); 
+    const intersects = getIntersects(e);
     const isHoveringModel = intersects.length > 0;
     
     if (isCopyModeActive) {
@@ -1535,7 +1592,6 @@ canvas3d.addEventListener('mousemove', (e) => {
         if (intersects.length > 0) drawOn3D(intersects, e);
         return;
     }
-
     if (isDrawing) {
         const isPickingColor = activeTool === 'picker' || e.altKey;
         const pickerHit = isPickingColor ? getColorPickerIntersect(e) : null;
@@ -1549,13 +1605,23 @@ canvas3d.addEventListener('mousemove', (e) => {
 
 canvas3d.addEventListener('mousedown', (e) => {
     if (e.button === 2) {
-        // YENİ: Brush ve Bucket eklendi
-        if (activeTool === 'picker' || activeTool === 'brush' || isBucketMode) {
-            isPanning = false; 
-        } else {
-            isPanning = true; 
+        // Kalem modelin üzerindeyken sağ tuş ikinci renkle boyamayı sürdürür.
+        // Modelin dışında ise aynı sağ tuş kamera döndürme davranışını korur.
+        const canRightPaint = activeTool === 'brush' && !isRoundBrushMode && !isBucketMode;
+        const rightHits = canRightPaint ? getIntersects(e) : [];
+        if (rightHits.length > 0) {
+            isDrawing = true;
+            strokePixels.clear();
+            viewer3d.controls.enableRotate = false;
+            drawOn3D(rightHits, e);
             return;
         }
+        isDrawing = false;
+        isPanning = false;
+        isRotating = true;
+        viewer3d.controls.enableRotate = true;
+        canvas3d.style.cursor = 'grabbing';
+        return;
     } else if (e.button !== 0) {
         return; 
     }
@@ -1569,8 +1635,8 @@ canvas3d.addEventListener('mousedown', (e) => {
         return;
     }
     
-    if (intersects.length > 0) { 
-        isDrawing = true; strokePixels.clear(); viewer3d.controls.enableRotate = false; 
+    if (intersects.length > 0) {
+        isDrawing = true; strokePixels.clear(); viewer3d.controls.enableRotate = false;
         drawOn3D(intersects, e); 
     }
     else { isRotating = true; viewer3d.controls.enableRotate = true; canvas3d.style.cursor = 'grabbing'; }
@@ -1606,13 +1672,12 @@ window.addEventListener('mouseup', (e) => {
     }
 });
 
-canvas3d.addEventListener('mouseleave', () => { 
+canvas3d.addEventListener('mouseleave', () => {
     if (isDrawing && hasDrawnStroke) { 
         if(typeof saveHistory === 'function') saveHistory(); 
         addToColorHistory(); 
     }
-    isDrawing = false; isRotating = false; isPanning = false; hasDrawnStroke = false; 
-    
+    isDrawing = false; isRotating = false; isPanning = false; hasDrawnStroke = false;
     // FIRÇA ÇİZGİSİNİ, HAFIZASINI VE 3D GEÇMİŞİNİ SIFIRLAMA
     lastDrawX = null; 
     lastDrawY = null; 
