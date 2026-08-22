@@ -13,6 +13,12 @@ const renderCanvas = document.getElementById('editor-2d-view');
 const renderCtx = renderCanvas.getContext('2d', { willReadFrequently: true });
 renderCtx.imageSmoothingEnabled = false;
 
+// 3D görünüm 128×128 skinlerde daha ince grid üretebilmek için 2D önizleme
+// tuvalinden bağımsız bir texture kullanır. 2D görünüm daima 512px kalır.
+const modelTextureCanvas = document.createElement('canvas');
+const modelTextureCtx = modelTextureCanvas.getContext('2d', { willReadFrequently: true });
+modelTextureCtx.imageSmoothingEnabled = false;
+
 const selCanvas = document.getElementById('editor-2d-selection');
 const selCtx = selCanvas.getContext('2d');
 let selectionMask = new Uint8Array(SKIN_RES * SKIN_RES);
@@ -54,7 +60,7 @@ let currentBrushCursorUrl = ''; // SVG İmlecini hafızada tutmak için
 let strokePixels = new Set(); 
 window.cachedImageData = null;
 
-let toolShortcuts = { brush: 'b', round_brush: 'r', bucket: 'f', eraser: 'e', picker: 'i', swap: 'x', mirror: 'm', grid: 'g', rect_select: 's', magic_wand: 'w', transform: 'v' };
+let toolShortcuts = { brush: 'b', smudge: 'u', round_brush: 'r', bucket: 'f', eraser: 'e', picker: 'i', swap: 'x', mirror: 'm', grid: 'g', rect_select: 's', magic_wand: 'w', transform: 'v' };
 let customizingShortcutFor = null;
 let isListeningForKey = false;
 let currentKeyTarget = null;
@@ -160,13 +166,14 @@ function drawGrid() {
     gridSvg.style.display = 'block';
 }
 
-function drawGridOn3DTexture() {
-    const textureSize = 512;
+function drawGridOn3DTexture(targetCtx, textureSize) {
     const step = textureSize / SKIN_RES;
 
     // Grid atlasını parça bazında oluştur: bir dış katman açıksa yalnız o
     // parçanın overlay UV'si grid alır; diğer parçalar temel UV gridini korur.
-    const atlasScale = 512 / 64;
+    // Texture atlası 64×64 taban koordinatlarıyla tanımlı; 128'lik skinlerde
+    // 1024px hedef texture'a doğru yayılması için ölçeği dinamik hesapla.
+    const atlasScale = textureSize / 64;
     const partRegions = {
         head:     { base: [0, 0, 32, 16],  outer: [32, 0, 32, 16] },
         body:     { base: [16, 16, 24, 16], outer: [16, 32, 24, 16] },
@@ -224,7 +231,7 @@ function drawGridOn3DTexture() {
     // Beyazla "difference" uygulamanın eşdeğeri RGB kanallarını tersine
     // çevirmektir. Her nokta maskede yalnız bir kez işaretlendiğinden,
     // kesişimler çizginin geri kalanıyla tamamen aynı tonda kalır.
-    const texture = renderCtx.getImageData(0, 0, textureSize, textureSize);
+    const texture = targetCtx.getImageData(0, 0, textureSize, textureSize);
     const data = texture.data;
     const gridOpacity = 0.18;
     const transparentGridAlpha = Math.round(255 * gridOpacity);
@@ -251,7 +258,7 @@ function drawGridOn3DTexture() {
             data[offset + 2] = Math.round(data[offset + 2] * (1 - gridOpacity) + (255 - data[offset + 2]) * gridOpacity);
         }
     }
-    renderCtx.putImageData(texture, 0, 0);
+    targetCtx.putImageData(texture, 0, 0);
 }
 
 function draw2DGuide() {
@@ -379,7 +386,18 @@ function updateTexture() {
     renderCtx.imageSmoothingEnabled = false;
     renderCtx.clearRect(0,0,512,512);
     renderCtx.drawImage(canvas2d, 0, 0, 512, 512);
-    if (gridToggle.checked && !is2DMode) drawGridOn3DTexture();
+
+    // 128×128 texture için 1024px atlas kullanılır: grid çizgisi, 64×64
+    // skinlerdeki 1/8 piksel oranını korur ve iki kat kalınlaşmaz.
+    const modelTextureSize = SKIN_RES === 128 ? 1024 : 512;
+    if (modelTextureCanvas.width !== modelTextureSize || modelTextureCanvas.height !== modelTextureSize) {
+        modelTextureCanvas.width = modelTextureSize;
+        modelTextureCanvas.height = modelTextureSize;
+    }
+    modelTextureCtx.imageSmoothingEnabled = false;
+    modelTextureCtx.clearRect(0, 0, modelTextureSize, modelTextureSize);
+    modelTextureCtx.drawImage(canvas2d, 0, 0, modelTextureSize, modelTextureSize);
+    if (gridToggle.checked && !is2DMode) drawGridOn3DTexture(modelTextureCtx, modelTextureSize);
     drawGrid();
     activeTextures.forEach(t => t.needsUpdate = true);
 }
@@ -1114,13 +1132,18 @@ function applyLiveTexture(modelType) {
                 const materials = Array.isArray(child.material) ? child.material : [child.material];
                 materials.forEach(mat => {
                     if (mat.map) {
-                        mat.map.image = renderCanvas; mat.map.magFilter = THREE.NearestFilter; mat.map.minFilter = THREE.NearestFilter; mat.map.needsUpdate = true;
-                        mat.emissiveMap = mat.map; mat.emissive = new THREE.Color(0xffffff); mat.color = new THREE.Color(0x000000); mat.transparent = true; mat.alphaTest = 0.01; 
+                        mat.map.image = modelTextureCanvas; mat.map.magFilter = THREE.NearestFilter; mat.map.minFilter = THREE.NearestFilter; mat.map.needsUpdate = true;
+                        // Şeffaf bir ön pikselin arkasındaki karşı yüz de
+                        // görünsün. Bu yalnızca render tarafını değiştirir;
+                        // raycast ve boyama hâlâ tıklanan ön yüzün UV'sinde kalır.
+                        mat.emissiveMap = mat.map; mat.emissive = new THREE.Color(0xffffff); mat.color = new THREE.Color(0x000000); mat.transparent = true; mat.alphaTest = 0.01; mat.side = THREE.DoubleSide;
+                        mat.needsUpdate = true;
                         activeTextures.push(mat.map); 
                     }
                 });
             }
         });
+        updateTexture();
         const sk = viewer3d.playerObject.skin;
         if (sk.rightArm.userData.origY === undefined) { sk.rightArm.userData.origY = sk.rightArm.position.y; sk.leftArm.userData.origY = sk.leftArm.position.y; }
         if (modelType === 'slim') {
@@ -1448,26 +1471,10 @@ function getIntersects(e) {
         return true;
     });
 
-    if (hits.length === 0) return [];
-    if (!window.cachedImageData) window.cachedImageData = ctx2d.getImageData(0,0,SKIN_RES,SKIN_RES).data;
-    const data = window.cachedImageData;
-
-    let firstOpaqueHit = null; let opaqueHitIndex = -1;
-    for (let i = 0; i < hits.length; i++) {
-        const hit = hits[i];
-        if (hit.uv) {
-            const px = Math.max(0, Math.min(SKIN_RES - 1, Math.floor(hit.uv.x * SKIN_RES))); 
-            const py = Math.max(0, Math.min(SKIN_RES - 1, Math.floor((1 - hit.uv.y) * SKIN_RES)));
-            const alpha = data[(py * SKIN_RES + px) * 4 + 3];
-            if (alpha > 0) { firstOpaqueHit = hit; opaqueHitIndex = i; break; }
-        }
-    }
-    if (firstOpaqueHit) {
-        const targetBodyPart = firstOpaqueHit.object.parent; 
-        for (let i = 0; i < opaqueHitIndex; i++) { if (hits[i].object.parent === targetBodyPart) return [hits[i]]; }
-        return [firstOpaqueHit];
-    }
-    return [hits[0]];
+    // Boyama, doku alfa değerine göre değil, tıklanan ilk görünür fiziksel
+    // yüzeye uygulanır. Böylece şeffaf bir dış kafa yüzeyine tıklandığında
+    // ışın gövdeye devam edip yanlış pikseli değiştiremez.
+    return hits.length ? [hits[0]] : [];
 }
 
 // Renk seçicide dış 3D katman saydam ise ray, alttaki katmana da çarpar.
@@ -1530,6 +1537,7 @@ function drawOn3D(intersects, e = null) {
         if (isJump) {
             lastDrawX = null;
             lastDrawY = null;
+            if (activeTool === 'smudge' && typeof resetSmudgeStroke === 'function') resetSmudgeStroke();
             
             // Max Alpha (Yumuşak Fırça) hafızasını da güvenli şekilde yenile
             if (typeof isRoundBrushMode !== 'undefined' && isRoundBrushMode) {
@@ -1580,7 +1588,7 @@ canvas3d.addEventListener('mousemove', (e) => {
         if (isHoveringModel) {
             viewer3d.controls.enableRotate = false;
             if (activeTool === 'picker') canvas3d.style.cursor = 'crosshair';
-            else if (isRoundBrushMode) canvas3d.style.cursor = currentBrushCursorUrl; // Dinamik Yuvarlak İmleç
+            else if (isRoundBrushMode || activeTool === 'smudge') canvas3d.style.cursor = currentBrushCursorUrl; // Dinamik Yuvarlak İmleç
             else if (activeTool === 'eraser') canvas3d.style.cursor = 'crosshair';
             else canvas3d.style.cursor = 'crosshair';
         } else { viewer3d.controls.enableRotate = true; canvas3d.style.cursor = 'grab'; }
@@ -1662,13 +1670,14 @@ window.addEventListener('mouseup', (e) => {
     strokeOriginalData = null;
     strokeAlphaMap = null;
     strokeDirtyBox = null;
+    if (typeof resetSmudgeStroke === 'function') resetSmudgeStroke();
 
     if (!isCopyModeActive && canvas3d && canvas3d.style.display !== 'none') {
         // Fare hareketi beklemeden, çizim aracının imlecini koru. Önceden
         // burada "default" atanması tıkladıktan sonra imlecin anlık kaybolmasına
         // neden oluyordu.
-        const usesDrawingCursor = isBucketMode || ['picker', 'brush', 'eraser'].includes(activeTool);
-        canvas3d.style.cursor = usesDrawingCursor ? (isRoundBrushMode ? currentBrushCursorUrl : 'crosshair') : 'default';
+        const usesDrawingCursor = isBucketMode || ['picker', 'brush', 'smudge', 'eraser'].includes(activeTool);
+        canvas3d.style.cursor = usesDrawingCursor ? (isRoundBrushMode || activeTool === 'smudge' ? currentBrushCursorUrl : 'crosshair') : 'default';
     }
 });
 
@@ -1684,6 +1693,7 @@ canvas3d.addEventListener('mouseleave', () => {
     if (typeof strokeOriginalData !== 'undefined') strokeOriginalData = null;
     if (typeof strokeAlphaMap !== 'undefined') strokeAlphaMap = null;
     if (typeof strokeDirtyBox !== 'undefined') strokeDirtyBox = null;
+    if (typeof resetSmudgeStroke === 'function') resetSmudgeStroke();
     
     last3DObject = null;
     last3DNormal = null;
@@ -1703,6 +1713,7 @@ document.getElementById('menu-settings-shortcuts').addEventListener('click', () 
     // Araç isimleri ve simgeleri, araç çubuğundaki karşılıklarıyla birebir aynıdır.
     const toolNames = { 
         brush: 'Pencil',
+        smudge: 'Smudge Brush',
         round_brush: 'Round Brush',
         bucket: 'Paint Bucket',
         eraser: 'Eraser',
@@ -1714,7 +1725,7 @@ document.getElementById('menu-settings-shortcuts').addEventListener('click', () 
         mirror: 'Mirror (Toggle)',
         grid: 'Grid (Toggle)'
     };
-    const iconSources = { brush: '#tool-brush', round_brush: '#tool-round_brush', bucket: '#tool-bucket', eraser: '#tool-eraser', picker: '#tool-picker', rect_select: '#tool-rect_select', magic_wand: '#tool-magic_wand', transform: '#tool-transform', swap: '#swap-colors', mirror: '#btn-action-mirror', grid: '#tool-grid' };
+    const iconSources = { brush: '#tool-brush', smudge: '#tool-smudge', round_brush: '#tool-round_brush', bucket: '#tool-bucket', eraser: '#tool-eraser', picker: '#tool-picker', rect_select: '#tool-rect_select', magic_wand: '#tool-magic_wand', transform: '#tool-transform', swap: '#swap-colors', mirror: '#btn-action-mirror', grid: '#tool-grid' };
     const getToolbarIcon = (key) => document.querySelector(iconSources[key])?.querySelector('svg')?.outerHTML || '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7"/></svg>';
     
     // Her bir kısayol için listeye yeni bir eleman oluştur

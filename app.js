@@ -736,7 +736,7 @@ function restoreHistory(stateStr) {
 }
 
 function updateCursorState() {
-    if (isRoundBrushMode) {
+    if (isRoundBrushMode || activeTool === 'smudge') {
         // 2D Ekran için yakınlaştırmaya (Zoom) duyarlı İmleç
         const s2d = view2D.scale * (512 / SKIN_RES);
         const r2d = (brushSize / 2) * s2d;
@@ -958,12 +958,120 @@ function drawSingleDab(ctx, cx, cy, r, g, b, a, isEraser) {
     }
 }
 
+// === SMUDGE BRUSH ===
+// Blockbench'teki Smudge Brush gibi, fırçanın hareket yönünün tersindeki
+// pikselleri örnekleyip hedefe yumuşakça taşır. İlk temas yalnız kaynak noktayı
+// belirler; renkler sürüklemeye başlanınca yayılır.
+let lastSmudgePoint = null;
+
+function resetSmudgeStroke() {
+    lastSmudgePoint = null;
+}
+
+function smudgeDab(ctx, cx, cy, offsetX, offsetY) {
+    const source = ctx.getImageData(0, 0, SKIN_RES, SKIN_RES);
+    const output = new Uint8ClampedArray(source.data);
+    const isSinglePixel = brushSize <= 1;
+    const radius = isSinglePixel ? 0 : brushSize / 2;
+    const innerRadius = radius * (brushHardness / 100);
+    const minX = isSinglePixel ? Math.max(0, Math.min(SKIN_RES - 1, Math.round(cx))) : Math.max(0, Math.floor(cx - radius));
+    const maxX = isSinglePixel ? minX : Math.min(SKIN_RES - 1, Math.ceil(cx + radius));
+    const minY = isSinglePixel ? Math.max(0, Math.min(SKIN_RES - 1, Math.round(cy))) : Math.max(0, Math.floor(cy - radius));
+    const maxY = isSinglePixel ? minY : Math.min(SKIN_RES - 1, Math.ceil(cy + radius));
+
+    const sample = (sampleX, sampleY) => {
+        // 1px modunda bilinear örnekleme komşu (özellikle alt) pikseli de
+        // karıştırıyordu. Burada kaynak koordinatı en yakın tek piksele
+        // sabitlenir; böylece tam olarak seçilen pikselin rengi taşınır.
+        if (isSinglePixel) {
+            const x = Math.max(0, Math.min(SKIN_RES - 1, Math.round(sampleX)));
+            const y = Math.max(0, Math.min(SKIN_RES - 1, Math.round(sampleY)));
+            if (hasSelection && !selectionMask[y * SKIN_RES + x]) return null;
+            const index = (y * SKIN_RES + x) * 4;
+            return [source.data[index], source.data[index + 1], source.data[index + 2], source.data[index + 3]];
+        }
+        const x0 = Math.floor(sampleX), y0 = Math.floor(sampleY);
+        const x1 = x0 + 1, y1 = y0 + 1;
+        const fx = sampleX - x0, fy = sampleY - y0;
+        const result = [0, 0, 0, 0];
+        let totalWeight = 0;
+        [[x0, y0, (1 - fx) * (1 - fy)], [x1, y0, fx * (1 - fy)], [x0, y1, (1 - fx) * fy], [x1, y1, fx * fy]].forEach(([x, y, weight]) => {
+            if (x < 0 || x >= SKIN_RES || y < 0 || y >= SKIN_RES) return;
+            if (hasSelection && !selectionMask[y * SKIN_RES + x]) return;
+            const index = (y * SKIN_RES + x) * 4;
+            for (let channel = 0; channel < 4; channel++) result[channel] += source.data[index + channel] * weight;
+            totalWeight += weight;
+        });
+        return totalWeight > 0 ? result.map(value => value / totalWeight) : null;
+    };
+
+    for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) {
+            if (hasSelection && !selectionMask[y * SKIN_RES + x]) continue;
+            const distance = isSinglePixel ? 0 : Math.hypot((x + 0.5) - cx, (y + 0.5) - cy);
+            if (!isSinglePixel && distance > radius) continue;
+            let localOpacity = 1;
+            if (distance > innerRadius && radius > innerRadius) localOpacity = 1 - ((distance - innerRadius) / (radius - innerRadius));
+
+            // Referans eklentideki 0.4 katsayısı, rengi taşırken dokuyu
+            // koruyan kontrollü bir yayılma sağlar.
+            const strength = Math.max(0, Math.min(1, localOpacity * 0.4));
+            const smeared = sample(x - offsetX, y - offsetY);
+            if (!smeared) continue;
+            const index = (y * SKIN_RES + x) * 4;
+            for (let channel = 0; channel < 4; channel++) {
+                output[index + channel] = Math.round(source.data[index + channel] * (1 - strength) + smeared[channel] * strength);
+            }
+        }
+    }
+    ctx.putImageData(new ImageData(output, SKIN_RES, SKIN_RES), 0, 0);
+}
+
+function applySmudge(px, py) {
+    const actCtx = getActiveCtx();
+    if (!lastSmudgePoint) {
+        lastSmudgePoint = { x: px, y: py };
+        lastDrawX = px;
+        lastDrawY = py;
+        return;
+    }
+    const dx = px - lastSmudgePoint.x;
+    const dy = py - lastSmudgePoint.y;
+    if (dx === 0 && dy === 0) return;
+
+    const steps = brushSize <= 1
+        ? Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy))))
+        : Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) * 2));
+    for (let step = 1; step <= steps; step++) {
+        const previousX = lastSmudgePoint.x + dx * ((step - 1) / steps);
+        const previousY = lastSmudgePoint.y + dy * ((step - 1) / steps);
+        const currentX = lastSmudgePoint.x + dx * (step / steps);
+        const currentY = lastSmudgePoint.y + dy * (step / steps);
+        const moveX = currentX - previousX;
+        const moveY = currentY - previousY;
+        smudgeDab(actCtx, currentX, currentY, moveX, moveY);
+
+        const mirrored = typeof getMirroredPixel === 'function' ? getMirroredPixel(Math.round(currentX), Math.round(currentY)) : null;
+        if (mirrored) smudgeDab(actCtx, mirrored[0], mirrored[1], -moveX, moveY);
+    }
+    lastSmudgePoint = { x: px, y: py };
+    lastDrawX = px;
+    lastDrawY = py;
+    hasDrawnStroke = true;
+    renderComposite();
+}
+
 // === ANA BOYAMA MOTORU ===
 function applyBrush(px, py, e = null) {
     // YENİ: Renk seçici aracındaysak VEYA Alt tuşuna basılı tutuyorsak renk seç.
     // e.altKey kontrolü sayesinde Alt + Sol Tık 1. Rengi, Alt + Sağ Tık 2. Rengi alacaktır!
     if (activeTool === 'picker' || (e && e.altKey)) {
         pickColorFromCanvas(px, py, e);
+        return;
+    }
+
+    if (activeTool === 'smudge') {
+        applySmudge(px, py);
         return;
     }
 
@@ -1204,6 +1312,7 @@ function floodFill(startCoords, e = null) {
 
 function updateToolTitles() {
     document.getElementById('tool-brush').title = `Pencil (${toolShortcuts.brush.toUpperCase()})`;
+    document.getElementById('tool-smudge').title = `Smudge Brush (${toolShortcuts.smudge.toUpperCase()})`;
     document.getElementById('tool-bucket').title = `Paint Bucket (${toolShortcuts.bucket.toUpperCase()})`;
     document.getElementById('tool-eraser').title = `Eraser (${toolShortcuts.eraser.toUpperCase()})`;
     document.getElementById('tool-picker').title = `Color Picker (${toolShortcuts.picker.toUpperCase()})`;
@@ -1230,10 +1339,12 @@ function setTool(tool) {
     } else {
         // Kalem, Silgi, Seçim vs.
         activeTool = tool;
-        if (['picker', 'rect_select', 'magic_wand', 'transform'].includes(tool)) {
+        if (['smudge', 'picker', 'rect_select', 'magic_wand', 'transform'].includes(tool)) {
             isBucketMode = false; isRoundBrushMode = false;
         }
     }
+
+    if (tool !== 'smudge') resetSmudgeStroke();
 
     updateToolUI();
     if (tool === 'transform' && hasSelection && !transformMode) startTransform();
@@ -1242,7 +1353,7 @@ function setTool(tool) {
 }
 
 function updateToolUI() {
-    ['brush', 'eraser', 'picker', 'rect_select', 'magic_wand', 'transform'].forEach(t => {
+    ['brush', 'smudge', 'eraser', 'picker', 'rect_select', 'magic_wand', 'transform'].forEach(t => {
         const btn = document.getElementById('tool-' + t);
         if (btn) btn.classList.remove('active');
     });
@@ -1260,13 +1371,13 @@ function updateToolUI() {
     if (tolGroup) tolGroup.style.display = isBucketMode ? 'flex' : 'none';
 
     const brushSettings = document.getElementById('group-brush-settings');
-    if (brushSettings) brushSettings.style.display = isRoundBrushMode ? 'flex' : 'none';
+    if (brushSettings) brushSettings.style.display = (isRoundBrushMode || activeTool === 'smudge') ? 'flex' : 'none';
 
     updateToolTitles();
 }
 
 // BÜTÜN BUTONLARIN TIKLAMA OLAYLARI BURADA YENİDEN TANIMLANIYOR
-['brush', 'bucket', 'round_brush', 'eraser', 'picker', 'rect_select', 'magic_wand', 'transform'].forEach(tool => {
+['brush', 'smudge', 'bucket', 'round_brush', 'eraser', 'picker', 'rect_select', 'magic_wand', 'transform'].forEach(tool => {
     const btn = document.getElementById('tool-' + tool);
     if (btn) {
         btn.onclick = () => setTool(tool);
@@ -1467,6 +1578,7 @@ document.addEventListener('keydown', (e) => {
     }
 
     if (e.key.toLowerCase() === toolShortcuts.brush) setTool('brush');
+    if (e.key.toLowerCase() === toolShortcuts.smudge) setTool('smudge');
     if (e.key.toLowerCase() === toolShortcuts.bucket) setTool('bucket');
     if (e.key.toLowerCase() === toolShortcuts.eraser) setTool('eraser');
     if (e.key.toLowerCase() === toolShortcuts.picker) setTool('picker');
