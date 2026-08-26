@@ -393,7 +393,7 @@
             align-items: center;
         }
 
-        #editor-3d-canvas {
+#editor-3d-canvas {
             display: block;
             width: 1200px;
             height: 900px;
@@ -1276,6 +1276,63 @@
     --ui-danger: #ff6c84;
     --ui-shadow: 0 18px 50px rgba(2, 7, 20, .38);
 }
+
+/* Drawn outside the canvas so browser cursor image-size limits never hide it. */
+#brush-size-cursor {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    box-sizing: border-box;
+    pointer-events: none;
+    border: 1px solid rgba(255, 255, 255, .96);
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, .95);
+}
+
+#brush-size-cursor::before,
+#brush-size-cursor::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    background: #fff;
+    box-shadow: 0 0 0 1px #000;
+}
+
+#brush-size-cursor::before { width: 9px; height: 1px; margin: 0 0 0 -4px; }
+#brush-size-cursor::after { width: 1px; height: 9px; margin: -4px 0 0 0; }
+
+.tool-settings-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 11px !important;
+}
+
+.tool-settings-header-actions { display: flex; align-items: center; gap: 3px; margin-left: auto; }
+.tool-settings-collapse-btn { width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; color: var(--ui-muted); background: transparent; font-size: 17px; line-height: 18px; cursor: pointer; }
+.tool-settings-collapse-btn:hover { color: #fff; background: rgba(255,255,255,.09); }
+.tool-settings-collapse-btn svg { display: block; width: 15px; height: 15px; margin: auto; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+#window-tool-settings.is-collapsed .tool-settings-section { display: none; }
+#window-tool-settings.is-collapsed .tool-settings-section.is-active-setting { display: flex; }
+#window-tool-settings.no-active-setting { display: none !important; }
+#brush-size-cursor.is-square { border-radius: 1px; }
+
+.tool-settings-section {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    padding-bottom: 11px;
+    border-bottom: 1px solid var(--ui-border, #3c3c3c);
+}
+
+.tool-settings-section:last-child { padding-bottom: 0; border-bottom: 0; }
+.tool-settings-label { color: var(--ui-muted, #a8a8a8); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.tool-settings-row { display: grid; grid-template-columns: 58px minmax(0, 1fr) 30px; gap: 8px; align-items: center; width: 100%; }
+.tool-settings-row > span { color: #d0d0d0; font-size: 11px; }
+.tool-settings-row > span:last-child { color: #bdbdbd; text-align: right; font-variant-numeric: tabular-nums; }
+.tool-settings-row .alpha-wrapper { width: 100%; background: #303030; }
+.tool-settings-row input { width: 100%; }
 
 * { box-sizing: border-box; }
 

@@ -22,7 +22,7 @@ function schedulePreferencesSave() {
 }
 
 function getPersistedPanelStates() {
-    return ['window-toolbar', 'window-color-panel', 'window-layers-panel'].reduce((states, id) => {
+    return ['window-toolbar', 'window-color-panel', 'window-tool-settings', 'window-layers-panel'].reduce((states, id) => {
         const panel = document.getElementById(id);
         if (!panel) return states;
         const rect = panel.getBoundingClientRect();
@@ -63,6 +63,7 @@ function savePersistentPreferences() {
                 history: colorHistory
             },
             panels: getPersistedPanelStates(),
+            toolSettingsCollapsed: document.getElementById('window-tool-settings')?.classList.contains('is-collapsed') || false,
             lastSkin: getLastSkinSnapshot()
         };
         localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify(preferences));
@@ -174,6 +175,7 @@ async function restorePersistentPreferences() {
         setColorWheelMode(preferences.colorWheelMode);
     }
     restorePanelStates(preferences.panels);
+    setToolSettingsCollapsed(preferences.toolSettingsCollapsed === true);
     const restoredSkin = await restoreLastSkinSnapshot(preferences.lastSkin).catch(() => false);
     updateToolTitles();
     updateUIColors();
@@ -736,21 +738,17 @@ function restoreHistory(stateStr) {
 }
 
 function updateCursorState() {
-    if (isRoundBrushMode || activeTool === 'smudge') {
-        // 2D Ekran için yakınlaştırmaya (Zoom) duyarlı İmleç
-        const s2d = view2D.scale * (512 / SKIN_RES);
-        const r2d = (brushSize / 2) * s2d;
-        const size2d = Math.max(16, Math.ceil(r2d * 2 + 6));
-        const half2d = size2d / 2;
-
-        // Ortasında + (crosshair) olan beyaz/siyah çember SVG'si
-        const svg2d = `<svg width="${size2d}" height="${size2d}" xmlns="http://www.w3.org/2000/svg"><circle cx="${half2d}" cy="${half2d}" r="${r2d}" fill="none" stroke="white" stroke-width="1.5"/><circle cx="${half2d}" cy="${half2d}" r="${r2d}" fill="none" stroke="black" stroke-width="0.5" stroke-dasharray="2,2"/><path d="M ${half2d - 4} ${half2d} L ${half2d + 4} ${half2d} M ${half2d} ${half2d - 4} L ${half2d} ${half2d + 4}" stroke="white" stroke-width="1.5"/><path d="M ${half2d - 4} ${half2d} L ${half2d + 4} ${half2d} M ${half2d} ${half2d - 4} L ${half2d} ${half2d + 4}" stroke="black" stroke-width="0.5"/></svg>`;
-        const url2d = `data:image/svg+xml;base64,${btoa(svg2d)}`;
-        document.getElementById('editor-2d-view').style.cursor = `url(${url2d}) ${half2d} ${half2d}, crosshair`;
+    const cursorBrushSize = isRoundBrushMode ? brushSize : activeTool === 'smudge' ? smudgeBrushSize : activeTool === 'eraser' ? eraserSize : activeTool === 'brush' ? pencilSize : brushSize;
+    const usesSizedCursor = isRoundBrushMode || activeTool === 'smudge' || (activeTool === 'brush' && pencilSize > 1) || (activeTool === 'eraser' && eraserSize > 1);
+    if (usesSizedCursor) {
+        // Native CSS cursors silently disappear once their SVG exceeds the
+        // browser's cursor-size limit. The 2D brush outline is drawn as a
+        // real overlay instead, so it remains accurate at every zoom level.
+        document.getElementById('editor-2d-view').style.cursor = 'crosshair';
 
         // 3D Ekran için Sabit boyutlu İmleç
         const s3d = 8;
-        const r3d = (brushSize / 2) * s3d;
+        const r3d = (cursorBrushSize / 2) * s3d;
         const size3d = Math.max(16, Math.ceil(r3d * 2 + 6));
         const half3d = size3d / 2;
         const svg3d = `<svg width="${size3d}" height="${size3d}" xmlns="http://www.w3.org/2000/svg"><circle cx="${half3d}" cy="${half3d}" r="${r3d}" fill="none" stroke="white" stroke-width="1.5"/><circle cx="${half3d}" cy="${half3d}" r="${r3d}" fill="none" stroke="black" stroke-width="0.5" stroke-dasharray="2,2"/><path d="M ${half3d - 4} ${half3d} L ${half3d + 4} ${half3d} M ${half3d} ${half3d - 4} L ${half3d} ${half3d + 4}" stroke="white" stroke-width="1.5"/><path d="M ${half3d - 4} ${half3d} L ${half3d + 4} ${half3d} M ${half3d} ${half3d - 4} L ${half3d} ${half3d + 4}" stroke="black" stroke-width="0.5"/></svg>`;
@@ -759,6 +757,51 @@ function updateCursorState() {
         document.getElementById('editor-2d-view').style.cursor = 'crosshair';
         currentBrushCursorUrl = '';
     }
+
+    if (!(is2DMode && usesSizedCursor)) hideBrushCursorOverlay();
+    else refreshBrushCursorOverlay();
+}
+
+let brushCursorOverlay = null;
+let lastBrushCursorPoint = null;
+
+function getBrushCursorOverlay() {
+    if (brushCursorOverlay) return brushCursorOverlay;
+    brushCursorOverlay = document.createElement('div');
+    brushCursorOverlay.id = 'brush-size-cursor';
+    brushCursorOverlay.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(brushCursorOverlay);
+    return brushCursorOverlay;
+}
+
+function hideBrushCursorOverlay() {
+    if (brushCursorOverlay) brushCursorOverlay.style.display = 'none';
+}
+
+function refreshBrushCursorOverlay() {
+    if (lastBrushCursorPoint) updateBrushCursorOverlay(lastBrushCursorPoint);
+}
+
+function updateBrushCursorOverlay(e) {
+    lastBrushCursorPoint = { clientX: e.clientX, clientY: e.clientY };
+    const isSquareTool = !isRoundBrushMode && ((activeTool === 'brush' && pencilSize > 1) || (activeTool === 'eraser' && eraserSize > 1));
+    const shouldShow = is2DMode && (isRoundBrushMode || activeTool === 'smudge' || isSquareTool);
+    const rect = renderCanvas.getBoundingClientRect();
+    const insideCanvas = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+    if (!shouldShow || !insideCanvas) {
+        hideBrushCursorOverlay();
+        return;
+    }
+
+    const cursor = getBrushCursorOverlay();
+    const activeSize = isRoundBrushMode ? brushSize : activeTool === 'smudge' ? smudgeBrushSize : activeTool === 'eraser' ? eraserSize : activeTool === 'brush' ? pencilSize : brushSize;
+    const diameter = Math.max(1, activeSize * (rect.width / SKIN_RES));
+    cursor.style.width = `${diameter}px`;
+    cursor.style.height = `${diameter}px`;
+    cursor.style.left = `${e.clientX - diameter / 2}px`;
+    cursor.style.top = `${e.clientY - diameter / 2}px`;
+    cursor.classList.toggle('is-square', isSquareTool);
+    cursor.style.display = 'block';
 }
 
 function getActiveCtx() { return layers[activeLayerIndex].ctx; }
@@ -783,7 +826,7 @@ function getOrCreateSvgOverlay() {
         // Performanslı CSS Animasyonu
         const style = document.createElement('style');
         style.innerHTML = `
-            @keyframes marchAnts { from { stroke-dashoffset: 8; } to { stroke-dashoffset: 0; } }
+            @keyframes marchAnts { from { stroke-dashoffset: var(--selection-dash-offset, 8); } to { stroke-dashoffset: 0; } }
             .marching-ants { animation: marchAnts 0.6s linear infinite; }
         `;
         document.head.appendChild(style);
@@ -808,6 +851,14 @@ function updateSelectionVisuals() {
     }
 
     const s = 512 / SKIN_RES;
+    // Avoid browser rendering artifacts from vector-effect on an SVG that is
+    // itself CSS-scaled. Keep both the outline and its dash animation at a
+    // constant screen size using document-space values instead.
+    const zoom = Math.max(0.2, view2D.scale || 1);
+    const outlineWidth = 0.8 / zoom;
+    const antsWidth = 0.55 / zoom;
+    const dash = `${6 / zoom},${2 / zoom}`;
+    const dashStyle = `--selection-dash-offset:${8 / zoom}`;
     const showBlueOverlay = (activeTool === 'rect_select' || activeTool === 'magic_wand');
     let svgHTML = '';
 
@@ -823,9 +874,8 @@ function updateSelectionVisuals() {
 
         selCtx.fillRect(rx * s, ry * s, rw * s, rh * s);
 
-        svgHTML += `<rect x="${rx * s}" y="${ry * s}" width="${rw * s}" height="${rh * s}" fill="none" stroke="black" stroke-width="0.5" vector-effect="non-scaling-stroke" />`;
-        // stroke-dasharray="6,2" ile beyaz çizgiler 6 birim, alttan görünen siyah kısımlar 2 birim oldu.
-        svgHTML += `<rect class="marching-ants" x="${rx * s}" y="${ry * s}" width="${rw * s}" height="${rh * s}" fill="none" stroke="white" stroke-width="0.3" stroke-dasharray="6,2" vector-effect="non-scaling-stroke" />`;
+        svgHTML += `<rect x="${rx * s}" y="${ry * s}" width="${rw * s}" height="${rh * s}" fill="none" stroke="black" stroke-width="${outlineWidth}" shape-rendering="crispEdges" />`;
+        svgHTML += `<rect class="marching-ants" style="${dashStyle}" x="${rx * s}" y="${ry * s}" width="${rw * s}" height="${rh * s}" fill="none" stroke="#ffffff" stroke-width="${antsWidth}" stroke-dasharray="${dash}" stroke-linecap="butt" shape-rendering="crispEdges" />`;
     }
 
     if (hasSelection) {
@@ -846,9 +896,8 @@ function updateSelectionVisuals() {
             }
         }
         if (pathD) {
-            svgHTML += `<path d="${pathD}" fill="none" stroke="black" stroke-width="0.5" vector-effect="non-scaling-stroke" />`;
-            // Aynı oran burada da uygulandı
-            svgHTML += `<path class="marching-ants" d="${pathD}" fill="none" stroke="white" stroke-width="0.3" stroke-dasharray="6,2" vector-effect="non-scaling-stroke" />`;
+            svgHTML += `<path d="${pathD}" fill="none" stroke="black" stroke-width="${outlineWidth}" shape-rendering="crispEdges" />`;
+            svgHTML += `<path class="marching-ants" style="${dashStyle}" d="${pathD}" fill="none" stroke="#ffffff" stroke-width="${antsWidth}" stroke-dasharray="${dash}" stroke-linecap="butt" shape-rendering="crispEdges" />`;
         }
     }
 
@@ -896,18 +945,23 @@ function pickColorFromCanvas(px, py, e = null) {
 // === FIRÇA ÇİZİMİ VE MAX ALPHA HESAPLAMASI ===
 function drawSingleDab(ctx, cx, cy, r, g, b, a, isEraser) {
     if (!isRoundBrushMode) {
-        // NORMAL KALEM: Sadece 1x1 Keskin Kare Çizer (Eski mantıkla sorunsuz devam eder)
-        const rx = Math.round(cx);
-        const ry = Math.round(cy);
-        if (rx < 0 || rx >= SKIN_RES || ry < 0 || ry >= SKIN_RES) return;
-
-        const pixelKey = `${rx},${ry}`;
-        if (!strokePixels.has(pixelKey)) {
-            strokePixels.add(pixelKey);
-            if (isEraser) ctx.clearRect(rx, ry, 1, 1);
-            else {
-                ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a})`;
-                ctx.fillRect(rx, ry, 1, 1);
+        // Pencil and square eraser dabs check the mask per pixel rather than
+        // clipping the whole stroke, so a stroke may enter a selection from outside.
+        const toolSize = isEraser ? eraserSize : pencilSize;
+        const startX = Math.round(cx - (toolSize - 1) / 2);
+        const startY = Math.round(cy - (toolSize - 1) / 2);
+        for (let y = startY; y < startY + toolSize; y++) {
+            for (let x = startX; x < startX + toolSize; x++) {
+                if (x < 0 || x >= SKIN_RES || y < 0 || y >= SKIN_RES) continue;
+                if (hasSelection && !selectionMask[y * SKIN_RES + x]) continue;
+                const pixelKey = `${x},${y}`;
+                if (strokePixels.has(pixelKey)) continue;
+                strokePixels.add(pixelKey);
+                if (isEraser) ctx.clearRect(x, y, 1, 1);
+                else {
+                    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a})`;
+                    ctx.fillRect(x, y, 1, 1);
+                }
             }
         }
         return;
@@ -926,24 +980,40 @@ function drawSingleDab(ctx, cx, cy, r, g, b, a, isEraser) {
     const minY = Math.max(0, Math.floor(centerY - radius - 1));
     const maxY = Math.min(SKIN_RES - 1, Math.ceil(centerY + radius + 1));
 
-    // Belirlenen alan içindeki pikselleri tara ve en yüksek fırça etkisini kaydet
+    // Paint.NET-style soft dabs are evaluated at several points within each
+    // pixel. Sampling only the pixel centre makes a low-resolution skin brush
+    // look hard even at a low hardness value.
+    const subPixelSamples = [-0.375, -0.125, 0.125, 0.375];
+    const opacityAt = (distance) => {
+        if (distance > radius) return 0;
+        if (distance <= innerRadius || radius <= innerRadius) return 1;
+        const edge = Math.min(1, Math.max(0, (distance - innerRadius) / (radius - innerRadius)));
+        // A gentle falloff keeps the low-hardness brush visibly soft while
+        // retaining a fully opaque centre at higher hardness values.
+        return Math.pow(1 - edge, 1.35);
+    };
+
+    // Scan the dab area and retain the strongest coverage for this stroke.
+    // The selection is checked per target pixel, so a dab can begin outside
+    // it and still paint wherever its outer edge overlaps the selection.
     for (let y = minY; y <= maxY; y++) {
         for (let x = minX; x <= maxX; x++) {
             if (hasSelection && !selectionMask[y * SKIN_RES + x]) continue;
 
-            const dist = Math.sqrt(Math.pow((x + 0.5) - centerX, 2) + Math.pow((y + 0.5) - centerY, 2));
-
-            if (dist <= radius) {
-                let pixelA = 1.0;
-                // Yumuşak kenar hesaplaması (Anti-aliasing / Feathering)
-                if (dist > innerRadius && radius > innerRadius) {
-                    pixelA = 1.0 - ((dist - innerRadius) / (radius - innerRadius));
+            let coverage = 0;
+            for (const sampleY of subPixelSamples) {
+                for (const sampleX of subPixelSamples) {
+                    const dist = Math.hypot((x + 0.5 + sampleX) - centerX, (y + 0.5 + sampleY) - centerY);
+                    coverage += opacityAt(dist);
                 }
-                pixelA *= a; // Fırçanın ana opacity değeri ile çarp
+            }
+            const pixelA = (coverage / (subPixelSamples.length * subPixelSamples.length)) * a;
+
+            if (pixelA > 0) {
 
                 const idx = y * SKIN_RES + x;
-                // EĞER BU VURUŞTAKİ SAYDAMLIK, ÖNCEKİ VURUŞTAN YÜKSEKSE GÜNCELLE
-                // (İşte çizgilerin üst üste binip sertleşmesini engelleyen kod burasıdır)
+                // Keep the strongest dab opacity for the whole stroke so a
+                // soft brush stays even while it is being interpolated.
                 if (pixelA > strokeAlphaMap[idx]) {
                     strokeAlphaMap[idx] = pixelA;
 
@@ -956,6 +1026,30 @@ function drawSingleDab(ctx, cx, cy, r, g, b, a, isEraser) {
             }
         }
     }
+}
+
+function roundBrushTouchesSelection(cx, cy) {
+    if (!hasSelection) return true;
+    const radius = brushSize / 2;
+    const centerX = cx + 0.5;
+    const centerY = cy + 0.5;
+    const minX = Math.max(0, Math.floor(centerX - radius - 1));
+    const maxX = Math.min(SKIN_RES - 1, Math.ceil(centerX + radius + 1));
+    const minY = Math.max(0, Math.floor(centerY - radius - 1));
+    const maxY = Math.min(SKIN_RES - 1, Math.ceil(centerY + radius + 1));
+
+    // Test the circle against each selected pixel square, not its centre.
+    // This matches the visible cursor: a dab is permitted exactly when the
+    // circular outline reaches any part of the selected area.
+    for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) {
+            if (!selectionMask[y * SKIN_RES + x]) continue;
+            const nearestX = Math.max(x, Math.min(centerX, x + 1));
+            const nearestY = Math.max(y, Math.min(centerY, y + 1));
+            if (Math.hypot(centerX - nearestX, centerY - nearestY) <= radius) return true;
+        }
+    }
+    return false;
 }
 
 // === SMUDGE BRUSH ===
@@ -971,13 +1065,22 @@ function resetSmudgeStroke() {
 function smudgeDab(ctx, cx, cy, offsetX, offsetY) {
     const source = ctx.getImageData(0, 0, SKIN_RES, SKIN_RES);
     const output = new Uint8ClampedArray(source.data);
-    const isSinglePixel = brushSize <= 1;
-    const radius = isSinglePixel ? 0 : brushSize / 2;
-    const innerRadius = radius * (brushHardness / 100);
-    const minX = isSinglePixel ? Math.max(0, Math.min(SKIN_RES - 1, Math.round(cx))) : Math.max(0, Math.floor(cx - radius));
-    const maxX = isSinglePixel ? minX : Math.min(SKIN_RES - 1, Math.ceil(cx + radius));
-    const minY = isSinglePixel ? Math.max(0, Math.min(SKIN_RES - 1, Math.round(cy))) : Math.max(0, Math.floor(cy - radius));
-    const maxY = isSinglePixel ? minY : Math.min(SKIN_RES - 1, Math.ceil(cy + radius));
+    const isSinglePixel = smudgeBrushSize <= 1;
+    const radius = isSinglePixel ? 0 : smudgeBrushSize / 2;
+    const innerRadius = radius * (smudgeBrushHardness / 100);
+    const centerX = cx + 0.5;
+    const centerY = cy + 0.5;
+    const minX = isSinglePixel ? Math.max(0, Math.min(SKIN_RES - 1, Math.round(cx))) : Math.max(0, Math.floor(centerX - radius - 1));
+    const maxX = isSinglePixel ? minX : Math.min(SKIN_RES - 1, Math.ceil(centerX + radius + 1));
+    const minY = isSinglePixel ? Math.max(0, Math.min(SKIN_RES - 1, Math.round(cy))) : Math.max(0, Math.floor(centerY - radius - 1));
+    const maxY = isSinglePixel ? minY : Math.min(SKIN_RES - 1, Math.ceil(centerY + radius + 1));
+    const subPixelSamples = [-0.25, 0.25];
+    const opacityAt = (distance) => {
+        if (distance > radius) return 0;
+        if (distance <= innerRadius || radius <= innerRadius) return 1;
+        const edge = Math.min(1, Math.max(0, (distance - innerRadius) / (radius - innerRadius)));
+        return Math.pow(1 - edge, 1.35);
+    };
 
     const sample = (sampleX, sampleY) => {
         // 1px modunda bilinear örnekleme komşu (özellikle alt) pikseli de
@@ -1008,10 +1111,17 @@ function smudgeDab(ctx, cx, cy, offsetX, offsetY) {
     for (let y = minY; y <= maxY; y++) {
         for (let x = minX; x <= maxX; x++) {
             if (hasSelection && !selectionMask[y * SKIN_RES + x]) continue;
-            const distance = isSinglePixel ? 0 : Math.hypot((x + 0.5) - cx, (y + 0.5) - cy);
-            if (!isSinglePixel && distance > radius) continue;
             let localOpacity = 1;
-            if (distance > innerRadius && radius > innerRadius) localOpacity = 1 - ((distance - innerRadius) / (radius - innerRadius));
+            if (!isSinglePixel) {
+                let coverage = 0;
+                for (const sampleY of subPixelSamples) {
+                    for (const sampleX of subPixelSamples) {
+                        coverage += opacityAt(Math.hypot((x + 0.5 + sampleX) - centerX, (y + 0.5 + sampleY) - centerY));
+                    }
+                }
+                localOpacity = coverage / (subPixelSamples.length * subPixelSamples.length);
+            }
+            if (localOpacity <= 0) continue;
 
             // Referans eklentideki 0.4 katsayısı, rengi taşırken dokuyu
             // koruyan kontrollü bir yayılma sağlar.
@@ -1039,7 +1149,7 @@ function applySmudge(px, py) {
     const dy = py - lastSmudgePoint.y;
     if (dx === 0 && dy === 0) return;
 
-    const steps = brushSize <= 1
+    const steps = smudgeBrushSize <= 1
         ? Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy))))
         : Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) * 2));
     for (let step = 1; step <= steps; step++) {
@@ -1099,6 +1209,15 @@ function applyBrush(px, py, e = null) {
         return;
     }
 
+    // Do not interpolate a distant cursor movement back through a selection.
+    // If the visible circular brush does not touch the selection, end this
+    // dab sequence and wait until it genuinely reaches the mask again.
+    if (isRoundBrushMode && hasSelection && !roundBrushTouchesSelection(px, py)) {
+        lastDrawX = null;
+        lastDrawY = null;
+        return;
+    }
+
     // İlk tıklamada başlangıç noktasını kaydet ve Fırça Motorunu Başlat
     if (lastDrawX === null || lastDrawY === null) {
         lastDrawX = px;
@@ -1116,30 +1235,15 @@ function applyBrush(px, py, e = null) {
     const dy = py - lastDrawY;
     const dist = Math.sqrt(dx * dx + dy * dy);
     // Yuvarlak fırça ise çizgi kopmaması için nokta (step) sayısını artırır
-    const steps = isRoundBrushMode ? Math.max(1, Math.ceil(dist * 2)) : Math.max(1, Math.ceil(dist));
+    // Closer dab spacing keeps soft brush strokes continuous even with a
+    // low hardness value and fast mouse movement.
+    const steps = isRoundBrushMode ? Math.max(1, Math.ceil(dist * 4)) : Math.max(1, Math.ceil(dist));
 
-    // Kalem modu için Maskeleme (Seçim Alanından taşmamak için)
-    if (!isRoundBrushMode && hasSelection) {
-        actCtx.save();
-        actCtx.beginPath();
-        for (let y = 0; y < SKIN_RES; y++) {
-            for (let x = 0; x < SKIN_RES; x++) {
-                if (selectionMask[y * SKIN_RES + x]) {
-                    actCtx.rect(x, y, 1, 1);
-                    
-                    // YENİ: Ayna açıksa, çizim sınırı (clip maskesi) içine aynalanan karşı tarafı da dahil et
-                    if (typeof getMirroredPixel === 'function' && typeof mirrorMode !== 'undefined' && mirrorMode > 0) {
-                        const mirrored = getMirroredPixel(x, y);
-                        if (mirrored) actCtx.rect(mirrored[0], mirrored[1], 1, 1);
-                    }
-                }
-            }
-        }
-        actCtx.clip();
-    }
-
-    // Noktaları Interpolate et
-    for (let i = 0; i <= steps; i++) {
+    // Selection ile çalışırken yalnızca gerçek imleç konumundaki dab'i uygula.
+    // Aksi halde seyrek mousemove olayları arasında oluşturulan sanal ara
+    // noktalar, ekranda fırça o konumda değilken seçimi boyayabiliyordu.
+    const firstStep = isRoundBrushMode && hasSelection ? steps : 0;
+    for (let i = firstStep; i <= steps; i++) {
         const cx = lastDrawX + (dx * (i / steps));
         const cy = lastDrawY + (dy * (i / steps));
 
@@ -1152,8 +1256,6 @@ function applyBrush(px, py, e = null) {
             drawSingleDab(actCtx, mx, my, drawR, drawG, drawB, drawA, isEraser);
         }
     }
-
-    if (!isRoundBrushMode && hasSelection) actCtx.restore();
 
     // YENİ EKLENDİ: Yuvarlak Fırça İçin Toplu Ekrana Çizim (Max Alpha Blending Composite)
     if (isRoundBrushMode && strokeDirtyBox && strokeDirtyBox.minX <= strokeDirtyBox.maxX) {
@@ -1204,7 +1306,7 @@ function applyBrush(px, py, e = null) {
 
 function floodFill(startCoords, e = null) {
     const actCtx = getActiveCtx();
-    const tolPercent = document.getElementById('slider-tol').value / 100;
+    const tolPercent = document.getElementById('slider-bucket-tol').value / 100;
     const targetDistSq = (255*255 * 4) * (tolPercent * tolPercent);
     const imgData = actCtx.getImageData(0,0,SKIN_RES,SKIN_RES); 
     const data = imgData.data;
@@ -1367,13 +1469,46 @@ function updateToolUI() {
     const btnBrush = document.getElementById('tool-round_brush');
     if (btnBrush) { if (isRoundBrushMode) btnBrush.classList.add('active'); else btnBrush.classList.remove('active'); }
 
-    const tolGroup = document.getElementById('group-tol');
-    if (tolGroup) tolGroup.style.display = isBucketMode ? 'flex' : 'none';
-
-    const brushSettings = document.getElementById('group-brush-settings');
-    if (brushSettings) brushSettings.style.display = (isRoundBrushMode || activeTool === 'smudge') ? 'flex' : 'none';
-
+    syncToolSettingsPanel();
     updateToolTitles();
+}
+
+function getActiveToolSettingsKey() {
+    if (isBucketMode) return 'bucket';
+    if (activeTool === 'smudge') return 'smudge';
+    if (activeTool === 'magic_wand') return 'wand';
+    if (activeTool === 'eraser' && !isRoundBrushMode) return 'eraser';
+    if (activeTool === 'brush' && !isRoundBrushMode) return 'pencil';
+    if (isRoundBrushMode) return 'brush';
+    return null;
+}
+
+function syncToolSettingsPanel() {
+    const activeKey = getActiveToolSettingsKey();
+    const panel = document.getElementById('window-tool-settings');
+    if (!panel) return;
+    // Expanded mode is an overview of every setting. Only the compact mode
+    // hides itself when the selected tool has no configurable options.
+    panel.classList.toggle('no-active-setting', !activeKey && panel.classList.contains('is-collapsed'));
+    document.querySelectorAll('#window-tool-settings [data-tool-setting]').forEach(section => {
+        section.classList.toggle('is-active-setting', section.dataset.toolSetting === activeKey);
+    });
+    if (typeof updateMenuStates === 'function') updateMenuStates();
+}
+
+function setToolSettingsCollapsed(isCollapsed) {
+    const panel = document.getElementById('window-tool-settings');
+    const button = document.getElementById('btn-tool-settings-collapse');
+    if (!panel || !button) return;
+    panel.classList.toggle('is-collapsed', isCollapsed);
+    panel.classList.toggle('no-active-setting', isCollapsed && !getActiveToolSettingsKey());
+    button.innerHTML = isCollapsed
+        ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>'
+        : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>';
+    button.title = isCollapsed ? 'Show all tool settings' : 'Show selected tool settings';
+    button.setAttribute('aria-label', button.title);
+    button.setAttribute('aria-expanded', String(!isCollapsed));
+    syncToolSettingsPanel();
 }
 
 // BÜTÜN BUTONLARIN TIKLAMA OLAYLARI BURADA YENİDEN TANIMLANIYOR
@@ -1398,6 +1533,29 @@ document.getElementById('slider-brush-hard').addEventListener('input', (e) => {
     brushHardness = parseInt(e.target.value);
     document.getElementById('val-brush-hard').innerText = brushHardness;
 });
+document.getElementById('slider-smudge-size').addEventListener('input', (e) => {
+    smudgeBrushSize = parseInt(e.target.value);
+    document.getElementById('val-smudge-size').innerText = smudgeBrushSize;
+    updateCursorState();
+});
+document.getElementById('slider-smudge-hard').addEventListener('input', (e) => {
+    smudgeBrushHardness = parseInt(e.target.value);
+    document.getElementById('val-smudge-hard').innerText = smudgeBrushHardness;
+});
+['pencil', 'eraser'].forEach(tool => {
+    document.getElementById(`slider-${tool}-size`).addEventListener('input', (e) => {
+        if (tool === 'pencil') pencilSize = parseInt(e.target.value);
+        else eraserSize = parseInt(e.target.value);
+        document.getElementById(`val-${tool}-size`).innerText = e.target.value;
+        updateCursorState();
+    });
+});
+document.getElementById('btn-tool-settings-collapse').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const panel = document.getElementById('window-tool-settings');
+    setToolSettingsCollapsed(!panel.classList.contains('is-collapsed'));
+    schedulePreferencesSave();
+});
 
 // YENİ: Dışarıdan HEX kodu girildiğinde rengi güncelleme işlevi
 document.getElementById('hex-color-code').addEventListener('change', (e) => {
@@ -1421,12 +1579,11 @@ document.getElementById('hex-color-code').addEventListener('change', (e) => {
     }
 });
 
-// YENİ: Boya Kovası tolerans değerini canlı yazdırma
-if(document.getElementById('slider-tol')) {
-    document.getElementById('slider-tol').addEventListener('input', (e) => {
-        document.getElementById('val-slider-tol').innerText = e.target.value + '%';
-    });
-}
+['bucket', 'wand'].forEach(tool => {
+    const slider = document.getElementById(`slider-${tool}-tol`);
+    const value = document.getElementById(`val-${tool}-tol`);
+    if (slider && value) slider.addEventListener('input', (e) => { value.innerText = `${e.target.value}%`; });
+});
 // Renk Değiştirme (Swap) ve Kısayol Ayarları
 swapBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); swapBtn.classList.add('waiting'); customizingShortcutFor = 'swap'; });
 swapBtn.addEventListener('click', () => {
@@ -1600,6 +1757,7 @@ function update2DTransform() {
 
 btn3D.addEventListener('click', () => {
     is2DMode = false; btn3D.classList.add('active'); btn2D.classList.remove('active');
+    if (typeof hideBrushCursorOverlay === 'function') hideBrushCursorOverlay();
     canvas3d.style.display = 'block'; container2D.style.display = 'none';
     document.getElementById('view-orientation-cube').style.display = 'block';
     if (typeof updateOrientationCube === 'function') updateOrientationCube();
@@ -1661,6 +1819,12 @@ function get2DCoords(e, clampToCanvas = true) {
     }
     return { px, py };
 }
+
+renderCanvas.addEventListener('mousemove', updateBrushCursorOverlay);
+renderCanvas.addEventListener('mouseleave', () => {
+    lastBrushCursorPoint = null;
+    hideBrushCursorOverlay();
+});
 
 function beginRectangleSelection(e) {
     const { px, py } = get2DCoords(e, false);
@@ -1746,7 +1910,7 @@ renderCanvas.addEventListener('mousedown', (e) => {
         if (!window.cachedImageData) window.cachedImageData = ctx2d.getImageData(0, 0, SKIN_RES, SKIN_RES).data;
         const targetColor = ctx2d.getImageData(px, py, 1, 1).data;
         const data = window.cachedImageData;
-        const tolPercent = document.getElementById('slider-tol').value / 100;
+        const tolPercent = document.getElementById('slider-wand-tol').value / 100;
         const targetDistSq = (255 * 255 * 4) * (tolPercent * tolPercent);
 
         if (e.ctrlKey && e.shiftKey) {
@@ -3163,6 +3327,7 @@ function toggleWindow(winId) {
 
 document.getElementById('menu-view-toolbar').addEventListener('click', () => toggleWindow('window-toolbar'));
 document.getElementById('menu-view-color').addEventListener('click', () => toggleWindow('window-color-panel'));
+document.getElementById('menu-view-tool-settings').addEventListener('click', () => toggleWindow('window-tool-settings'));
 document.getElementById('menu-view-layers').addEventListener('click', () => toggleWindow('window-layers-panel'));
 
 // Uygulama ilk açıldığında tikleri eşitle

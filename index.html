@@ -70,6 +70,7 @@
             <div class="dropdown">
                 <div class="dropdown-item" id="menu-view-toolbar"><span class="check-toolbar" style="margin-right: 8px; font-weight: bold; width: 12px; color: #38ef7d;">✓</span> Toolbar</div>
                 <div class="dropdown-item" id="menu-view-color"><span class="check-color" style="margin-right: 8px; font-weight: bold; width: 12px; color: #38ef7d;">✓</span> Color Panel</div>
+                <div class="dropdown-item" id="menu-view-tool-settings"><span class="check-tool-settings" style="margin-right: 8px; font-weight: bold; width: 12px; color: #38ef7d;">✓</span> Tool Settings</div>
                 <div class="dropdown-item" id="menu-view-layers"><span class="check-layers" style="margin-right: 8px; font-weight: bold; width: 12px; color: #38ef7d;">✓</span> Layers Panel</div>
                 <div class="dropdown-separator"></div>
                 <div class="dropdown-item" id="menu-view-bg">Background Color</div>
@@ -487,28 +488,6 @@
                     <div class="alpha-wrapper" style="width: 120px;"><input type="range" id="slider-a" class="styled-slider" min="0" max="100" value="100" style="width: 100%;"></div>
                     <div class="hsl-value-control"><input id="val-slider-a" class="hsl-value-input" type="number" min="0" max="100" step="1" value="100" aria-label="Alpha değeri"><span class="hsl-step-buttons"><button type="button" data-hsl-step="a" data-step="1" aria-label="Alpha değerini 1 artır"><svg viewBox="0 0 12 12"><path d="m2.5 7 3.5-3 3.5 3"/></svg></button><button type="button" data-hsl-step="a" data-step="-1" aria-label="Alpha değerini 1 azalt"><svg viewBox="0 0 12 12"><path d="m2.5 5 3.5 3 3.5-3"/></svg></button></span></div>
                 </div>
-                <div class="slider-group" id="group-tol" style="display: none; justify-content: space-between;">
-                    <span style="color:#ffd700; width:12px;">T</span>
-                    <div class="alpha-wrapper" style="background:#444; width: 120px;"><input type="range" id="slider-tol" class="styled-slider" min="0" max="100" value="0" style="width: 100%;"></div>
-                    <span id="val-slider-tol" style="width:30px; text-align:right; color:#ccc;">0%</span>
-                </div>
-                
-                <div id="group-brush-settings" style="display: none; flex-direction: column; gap: 8px; width: 100%; margin-top: 2px;">
-                    <div class="slider-group" style="justify-content: space-between;">
-                        <span style="color:#fff; font-size:10px; width: 45px; text-align: left;">BOYUT</span>
-                        <div class="alpha-wrapper" style="background:#444; width: 95px;">
-                            <input type="range" id="slider-brush-size" class="styled-slider" min="1" max="32" value="4" style="width: 100%;">
-                        </div>
-                        <span id="val-brush-size" style="width:18px; text-align:right; color:#ccc;">4</span>
-                    </div>
-                    <div class="slider-group" style="justify-content: space-between;">
-                        <span style="color:#fff; font-size:10px; width: 45px; text-align: left;">HARDNESS</span>
-                        <div class="alpha-wrapper" style="background:#444; width: 95px;">
-                            <input type="range" id="slider-brush-hard" class="styled-slider" min="0" max="100" value="15" style="width: 100%;">
-                        </div>
-                        <span id="val-brush-hard" style="width:18px; text-align:right; color:#ccc;">15</span>
-                    </div>
-                </div>
             </div>
 
             <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; margin: 15px 0 10px 0;">
@@ -547,6 +526,71 @@
                 </div>
             </div>
             <div class="color-history" id="color-history"></div>
+        </div>
+    </div>
+
+    <!-- TOOL SETTINGS: kept separate from colour controls and available in every mode. -->
+    <div id="window-tool-settings" class="adj-window tool-window" style="display: flex; top: 60px; right: 20px; left: auto; width: 240px; z-index: 1000;">
+        <div class="adj-header"><span>Tool Settings</span><div class="tool-settings-header-actions"><button id="btn-tool-settings-collapse" class="tool-settings-collapse-btn" type="button" title="Show selected tool settings" aria-label="Show selected tool settings" aria-expanded="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg></button><button class="adj-close-btn">&times;</button></div></div>
+        <div class="adj-content tool-settings-content">
+            <section class="tool-settings-section" data-tool-setting="pencil" aria-labelledby="tool-settings-pencil">
+                <div class="tool-settings-label" id="tool-settings-pencil">Pencil</div>
+                <div class="slider-group tool-settings-row">
+                    <span>Size</span>
+                    <div class="alpha-wrapper"><input type="range" id="slider-pencil-size" class="styled-slider" min="1" max="32" value="1"></div>
+                    <span id="val-pencil-size">1</span>
+                </div>
+            </section>
+            <section class="tool-settings-section" data-tool-setting="brush" aria-labelledby="tool-settings-brush">
+                <div class="tool-settings-label" id="tool-settings-brush">Brush</div>
+                <div class="slider-group tool-settings-row">
+                    <span>Size</span>
+                    <div class="alpha-wrapper"><input type="range" id="slider-brush-size" class="styled-slider" min="1" max="32" value="4"></div>
+                    <span id="val-brush-size">4</span>
+                </div>
+                <div class="slider-group tool-settings-row">
+                    <span>Hardness</span>
+                    <div class="alpha-wrapper"><input type="range" id="slider-brush-hard" class="styled-slider" min="0" max="100" value="15"></div>
+                    <span id="val-brush-hard">15</span>
+                </div>
+            </section>
+            <section class="tool-settings-section" data-tool-setting="eraser" aria-labelledby="tool-settings-eraser">
+                <div class="tool-settings-label" id="tool-settings-eraser">Eraser</div>
+                <div class="slider-group tool-settings-row">
+                    <span>Size</span>
+                    <div class="alpha-wrapper"><input type="range" id="slider-eraser-size" class="styled-slider" min="1" max="32" value="1"></div>
+                    <span id="val-eraser-size">1</span>
+                </div>
+            </section>
+            <section class="tool-settings-section" data-tool-setting="smudge" aria-labelledby="tool-settings-smudge">
+                <div class="tool-settings-label" id="tool-settings-smudge">Smudge Brush</div>
+                <div class="slider-group tool-settings-row">
+                    <span>Size</span>
+                    <div class="alpha-wrapper"><input type="range" id="slider-smudge-size" class="styled-slider" min="1" max="32" value="1"></div>
+                    <span id="val-smudge-size">1</span>
+                </div>
+                <div class="slider-group tool-settings-row">
+                    <span>Hardness</span>
+                    <div class="alpha-wrapper"><input type="range" id="slider-smudge-hard" class="styled-slider" min="0" max="100" value="15"></div>
+                    <span id="val-smudge-hard">15</span>
+                </div>
+            </section>
+            <section class="tool-settings-section" data-tool-setting="bucket" aria-labelledby="tool-settings-bucket">
+                <div class="tool-settings-label" id="tool-settings-bucket">Paint Bucket</div>
+                <div class="slider-group tool-settings-row">
+                    <span>Tolerance</span>
+                    <div class="alpha-wrapper"><input type="range" id="slider-bucket-tol" class="styled-slider" min="0" max="100" value="0"></div>
+                    <span id="val-bucket-tol">0%</span>
+                </div>
+            </section>
+            <section class="tool-settings-section" data-tool-setting="wand" aria-labelledby="tool-settings-wand">
+                <div class="tool-settings-label" id="tool-settings-wand">Magic Wand</div>
+                <div class="slider-group tool-settings-row">
+                    <span>Tolerance</span>
+                    <div class="alpha-wrapper"><input type="range" id="slider-wand-tol" class="styled-slider" min="0" max="100" value="0"></div>
+                    <span id="val-wand-tol">0%</span>
+                </div>
+            </section>
         </div>
     </div>
 

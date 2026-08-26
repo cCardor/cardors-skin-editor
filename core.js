@@ -51,6 +51,10 @@ let isBucketMode = false;
 let isRoundBrushMode = false;
 let brushSize = 4;
 let brushHardness = 15;
+let smudgeBrushSize = 1;
+let smudgeBrushHardness = 15;
+let pencilSize = 1;
+let eraserSize = 1;
 let lastDrawX = null;
 let lastDrawY = null;
 let strokeOriginalData = null;
@@ -387,9 +391,10 @@ function updateTexture() {
     renderCtx.clearRect(0,0,512,512);
     renderCtx.drawImage(canvas2d, 0, 0, 512, 512);
 
-    // 128×128 texture için 1024px atlas kullanılır: grid çizgisi, 64×64
-    // skinlerdeki 1/8 piksel oranını korur ve iki kat kalınlaşmaz.
-    const modelTextureSize = SKIN_RES === 128 ? 1024 : 512;
+    // 3D atlas her çözünürlükte 1024px tutulur. Böylece 64×64 skindeki
+    // tek grid texeli model üzerinde 512px atlasın iki katı kalın görünmez;
+    // 128×128 görünümü ise mevcut ayrıntı düzeyini aynen korur.
+    const modelTextureSize = 1024;
     if (modelTextureCanvas.width !== modelTextureSize || modelTextureCanvas.height !== modelTextureSize) {
         modelTextureCanvas.width = modelTextureSize;
         modelTextureCanvas.height = modelTextureSize;
@@ -711,6 +716,7 @@ function updateMenuStates() {
     [
         ['.check-toolbar', 'window-toolbar'],
         ['.check-color', 'window-color-panel'],
+        ['.check-tool-settings', 'window-tool-settings'],
         ['.check-layers', 'window-layers-panel']
     ].forEach(([check, windowId]) => {
         const panel = document.getElementById(windowId);
