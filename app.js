@@ -22,7 +22,7 @@ function schedulePreferencesSave() {
 }
 
 function getPersistedPanelStates() {
-    return ['window-toolbar', 'window-color-panel', 'window-tool-settings', 'window-layers-panel'].reduce((states, id) => {
+    return ['window-toolbar', 'window-color-panel', 'window-palette-panel', 'window-tool-settings', 'window-layers-panel'].reduce((states, id) => {
         const panel = document.getElementById(id);
         if (!panel) return states;
         const rect = panel.getBoundingClientRect();
@@ -49,6 +49,59 @@ function getLastSkinSnapshot() {
     };
 }
 
+function bytesToBase64Url(bytes) {
+    let binary = '';
+    for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+function base64UrlToBytes(value) {
+    const base64 = value.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((value.length + 3) % 4);
+    const binary = atob(base64); const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+}
+async function encodeSharedWork(snapshot) {
+    const bytes = new TextEncoder().encode(JSON.stringify(snapshot));
+    if (typeof CompressionStream === 'undefined') return `raw.${bytesToBase64Url(bytes)}`;
+    const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip'));
+    return `gz.${bytesToBase64Url(new Uint8Array(await new Response(stream).arrayBuffer()))}`;
+}
+async function decodeSharedWork(value) {
+    const [format, encoded] = value.split('.', 2);
+    if (!encoded || !['gz', 'raw'].includes(format)) throw new Error('Invalid shared work link.');
+    const bytes = base64UrlToBytes(encoded);
+    let text;
+    if (format === 'gz') {
+        if (typeof DecompressionStream === 'undefined') throw new Error('This browser cannot open compressed work links.');
+        text = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+    } else text = new TextDecoder().decode(bytes);
+    return JSON.parse(text);
+}
+async function openSharedWorkFromUrl() {
+    const match = location.hash.match(/(?:^#|[&;])work=([^&;]+)/);
+    if (!match) return false;
+    try {
+        const snapshot = await decodeSharedWork(match[1]);
+        const loaded = await restoreLastSkinSnapshot(snapshot);
+        if (!loaded) throw new Error('The link does not contain a valid skin.');
+        history.replaceState(null, '', `${location.pathname}${location.search}`);
+        return true;
+    } catch (error) {
+        console.warn('Shared work link could not be opened:', error);
+        alert('This shared work link could not be opened.');
+        return false;
+    }
+}
+async function showSharedWorkLink() {
+    const snapshot = getLastSkinSnapshot();
+    if (!snapshot) return;
+    const payload = await encodeSharedWork(snapshot);
+    const baseUrl = location.origin === 'null' ? location.href.split('#')[0] : `${location.origin}${location.pathname}`;
+    const url = `${baseUrl}#work=${payload}`;
+    document.getElementById('share-work-url').value = url;
+    document.getElementById('modal-share-work').style.display = 'flex';
+}
+
 function savePersistentPreferences() {
     if (!preferencesReady) return;
     try {
@@ -60,9 +113,17 @@ function savePersistentPreferences() {
             colors: {
                 primary: { r: currentR, g: currentG, b: currentB, h: currentH, s: currentS, l: currentL, a: currentA },
                 secondary: secondaryColor,
-                history: colorHistory
+                history: colorHistory,
+                palettes: typeof savedPalettes === 'undefined' ? [] : savedPalettes,
+                activePaletteId: typeof activePaletteId === 'undefined' ? null : activePaletteId,
+                paletteIdCounter: typeof paletteIdCounter === 'undefined' ? 1 : paletteIdCounter
             },
             panels: getPersistedPanelStates(),
+            viewer: {
+                scene: typeof viewerSceneMode === 'string' ? viewerSceneMode : 'editor',
+                pose: typeof viewerPoseMode === 'string' ? viewerPoseMode : 'standing',
+                animate: typeof viewerAnimationEnabled === 'boolean' && viewerAnimationEnabled
+            },
             toolSettingsCollapsed: document.getElementById('window-tool-settings')?.classList.contains('is-collapsed') || false,
             lastSkin: getLastSkinSnapshot()
         };
@@ -170,16 +231,35 @@ async function restorePersistentPreferences() {
         }
         if (colors.secondary && [colors.secondary.h, colors.secondary.s, colors.secondary.l, colors.secondary.a].every(Number.isFinite)) secondaryColor = colors.secondary;
         if (Array.isArray(colors.history)) colorHistory = colors.history.slice(0, 14);
+        if (Array.isArray(colors.palettes) && colors.palettes.length) {
+            savedPalettes = colors.palettes.map((palette, index) => ({
+                id: typeof palette.id === 'string' ? palette.id : `palette-${index + 1}`,
+                name: typeof palette.name === 'string' && palette.name.trim() ? palette.name.slice(0, 32) : `Palette ${index + 1}`,
+                colors: Array.isArray(palette.colors) ? palette.colors.map(normalizePaletteColor).slice(0, 64) : []
+            }));
+            activePaletteId = savedPalettes.some(palette => palette.id === colors.activePaletteId) ? colors.activePaletteId : savedPalettes[0].id;
+            paletteIdCounter = Math.max(Number(colors.paletteIdCounter) || 1, savedPalettes.length + 1);
+        }
     }
     if (preferences.colorWheelMode === 'triangle' || preferences.colorWheelMode === 'square') {
         setColorWheelMode(preferences.colorWheelMode);
     }
     restorePanelStates(preferences.panels);
     setToolSettingsCollapsed(preferences.toolSettingsCollapsed === true);
+    if (preferences.viewer && typeof preferences.viewer === 'object') {
+        const scene = preferences.viewer.scene === 'transparent' ? 'transparent' : 'editor';
+        const pose = preferences.viewer.animate === true ? 'walking' : 'standing';
+        if (typeof applyViewerScene === 'function') applyViewerScene(scene);
+        if (typeof setPreviewPose === 'function') setPreviewPose(pose);
+        if (typeof updatePreviewAnimation === 'function') { viewerAnimationEnabled = preferences.viewer.animate === true; updatePreviewAnimation(); }
+        document.getElementById('viewer-scene-select').value = scene;
+        document.getElementById('viewer-animation-toggle').checked = viewerAnimationEnabled;
+    }
     const restoredSkin = await restoreLastSkinSnapshot(preferences.lastSkin).catch(() => false);
     updateToolTitles();
     updateUIColors();
     renderColorHistory();
+    if (typeof renderPaletteManager === 'function') renderPaletteManager();
     updateMenuStates();
     return restoredSkin;
 }
@@ -232,12 +312,13 @@ function loadDocumentState(index) {
 
     updateLayerUI();
     renderComposite();
+    if (typeof renderPaletteManager === 'function') renderPaletteManager();
     applyLiveTexture(currentModel);
     updateDocumentTabsUI();
 }
 
 // Yeni Bir Dosya / Belge Oluşturur
-function createNewDocument(name, img = null, res = 64, model = 'default') {
+function createNewDocument(name, img = null, res = 64, model = 'default', baseColor = null) {
     saveCurrentDocumentState();
 
     const initialLayers = [];
@@ -248,6 +329,19 @@ function createNewDocument(name, img = null, res = 64, model = 'default') {
 
     if (img) {
         ctx.drawImage(img, 0, 0, res, res);
+    } else if (baseColor) {
+        ctx.fillStyle = baseColor;
+        // A skin texture includes unused UV gaps. Fill only the rectangles that
+        // are actually mapped onto the player, leaving those gaps transparent.
+        const allFaces = typeof getSkinFaces === 'function'
+            ? getSkinFaces(model === 'slim', res / 64)
+            : [[0, 0, res, res]];
+        // getSkinFaces stores each body part as a base-layer group followed by
+        // its outer/3D-layer group. Keep only every first group of twelve faces.
+        const faces = typeof getSkinFaces === 'function'
+            ? allFaces.filter((_, index) => Math.floor(index / 6) % 2 === 0)
+            : allFaces;
+        faces.forEach(([x, y, width, height]) => ctx.fillRect(x, y, width, height));
     } else {
         drawTemplateFallback(ctx);
     }
@@ -1763,6 +1857,8 @@ btn3D.addEventListener('click', () => {
     if (typeof updateOrientationCube === 'function') updateOrientationCube();
     if (typeof updateTexture === 'function') updateTexture();
     document.getElementById('btn-3d-screenshot').style.display = 'flex';
+    document.getElementById('btn-share-work-quick').style.display = 'flex';
+    document.getElementById('viewer-customization').hidden = false;
     document.getElementById('btn-action-mirror').style.display = 'flex';
     document.getElementById('btn-action-filler').style.display = 'flex';
     document.getElementById('btn-action-guide').style.display = 'none';
@@ -1776,6 +1872,7 @@ btn2D.addEventListener('click', () => {
     document.getElementById('view-orientation-cube').style.display = 'none';
     if (typeof updateTexture === 'function') updateTexture();
     document.getElementById('btn-3d-screenshot').style.display = 'none';
+    document.getElementById('viewer-customization').hidden = true;
     document.getElementById('btn-action-mirror').style.display = 'none';
     document.getElementById('btn-action-filler').style.display = 'none';
     document.getElementById('btn-action-guide').style.display = 'flex';
@@ -2091,16 +2188,37 @@ async function initializeEditor() {
     currentModel = 'default';
 
     const restoredSkin = await restorePersistentPreferences();
+    const openedSharedWork = await openSharedWorkFromUrl();
     // Kaydedilmiş bir skin yoksa başlangıç şablonunu oluştur.
-    if (!restoredSkin && typeof documents !== 'undefined' && documents.length === 0) {
+    if (!restoredSkin && !openedSharedWork && typeof documents !== 'undefined' && documents.length === 0) {
         loadTemplateAndCreateDoc("Skin 1", 64, currentModel);
     }
 
     if (viewer3d && typeof enforceUIVisibilityState === 'function') enforceUIVisibilityState();
+    if (typeof renderPaletteManager === 'function') renderPaletteManager();
     requestAnimationFrame(animateSelection);
     preferencesReady = true;
     schedulePreferencesSave();
 }
+
+document.getElementById('menu-share-work').addEventListener('click', async () => {
+    closeAllMenus();
+    try { await showSharedWorkLink(); }
+    catch (error) { console.error('Share link could not be created:', error); alert('The share link could not be created.'); }
+});
+document.getElementById('btn-share-work-quick').addEventListener('click', async () => {
+    try { await showSharedWorkLink(); }
+    catch (error) { console.error('Share link could not be created:', error); alert('The share link could not be created.'); }
+});
+document.getElementById('btn-share-close').addEventListener('click', () => { document.getElementById('modal-share-work').style.display = 'none'; });
+document.getElementById('btn-share-copy').addEventListener('click', async () => {
+    const input = document.getElementById('share-work-url');
+    try {
+        await navigator.clipboard.writeText(input.value);
+        document.getElementById('btn-share-copy').textContent = 'Copied';
+        setTimeout(() => { document.getElementById('btn-share-copy').textContent = 'Copy Link'; }, 1400);
+    } catch (_) { input.select(); document.execCommand('copy'); }
+});
 
 window.addEventListener('load', async () => {
     await initializeEditor();
@@ -3327,6 +3445,7 @@ function toggleWindow(winId) {
 
 document.getElementById('menu-view-toolbar').addEventListener('click', () => toggleWindow('window-toolbar'));
 document.getElementById('menu-view-color').addEventListener('click', () => toggleWindow('window-color-panel'));
+document.getElementById('menu-view-palette').addEventListener('click', () => toggleWindow('window-palette-panel'));
 document.getElementById('menu-view-tool-settings').addEventListener('click', () => toggleWindow('window-tool-settings'));
 document.getElementById('menu-view-layers').addEventListener('click', () => toggleWindow('window-layers-panel'));
 

@@ -63,6 +63,7 @@
                 <div class="dropdown-separator"></div>
                 <div class="dropdown-item" id="menu-add-reference">Add Reference Image...</div>
                 <div class="dropdown-separator"></div>
+                <div class="dropdown-item" id="menu-share-work">Share Work Link...</div>
                 <div class="dropdown-item" id="menu-download-skin">Save As...</div>
             </div>
         </div>
@@ -70,10 +71,15 @@
             <div class="dropdown">
                 <div class="dropdown-item" id="menu-view-toolbar"><span class="check-toolbar" style="margin-right: 8px; font-weight: bold; width: 12px; color: #38ef7d;">✓</span> Toolbar</div>
                 <div class="dropdown-item" id="menu-view-color"><span class="check-color" style="margin-right: 8px; font-weight: bold; width: 12px; color: #38ef7d;">✓</span> Color Panel</div>
+                <div class="dropdown-item" id="menu-view-palette"><span class="check-palette" style="margin-right: 8px; font-weight: bold; width: 12px; color: #38ef7d;">✓</span> Palette Panel</div>
                 <div class="dropdown-item" id="menu-view-tool-settings"><span class="check-tool-settings" style="margin-right: 8px; font-weight: bold; width: 12px; color: #38ef7d;">✓</span> Tool Settings</div>
                 <div class="dropdown-item" id="menu-view-layers"><span class="check-layers" style="margin-right: 8px; font-weight: bold; width: 12px; color: #38ef7d;">✓</span> Layers Panel</div>
                 <div class="dropdown-separator"></div>
                 <div class="dropdown-item" id="menu-view-bg">Background Color</div>
+                <div class="dropdown-item dropdown-scene-control"><span>3D Scene</span><select id="viewer-scene-select" aria-label="3D Scene">
+                    <option value="editor">Editor</option>
+                    <option value="transparent">Transparent</option>
+                </select></div>
                 <div class="dropdown-separator"></div>
                 <div class="dropdown-item" id="menu-view-grid"><span class="check-grid" style="margin-right: 8px; font-weight: bold; width: 12px; color: #38ef7d; opacity: 0;">✓</span> Toggle Grid</div>
                 <div class="dropdown-item" id="menu-view-layer"><span class="check-3d-layer" style="margin-right: 8px; font-weight: bold; width: 12px; color: #38ef7d; opacity: 0;">✓</span> Toggle 3D Layer
@@ -99,8 +105,8 @@
         </div>
 
         <div
-            style="position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: center; user-select: none; pointer-events: none;">
-            <img src="logo.png" alt="Logo" style="height: 20px; width: 20px; margin-right: 8px; object-fit: contain;">
+            style="position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: center; user-select: none;">
+            <img id="app-logo-easter-egg" src="logo.png" alt="Logo" style="height: 20px; width: 20px; margin-right: 8px; object-fit: contain; cursor: pointer;">
             <span style="font-weight: 700; color: #fff; font-size: 14px; letter-spacing: 0.5px;">Cardor's 3D
                 Editor</span>
         </div>
@@ -110,6 +116,9 @@
             <button id="btn-view-2d" class="view-btn">2D</button>
         </div>
     </div>
+
+    <div id="necla-easter-egg" aria-hidden="true"><img src="necla.png" alt=""></div>
+    <audio id="necla-easter-egg-audio" src="meow.mp3" preload="auto"></audio>
 
     <!-- MODALLAR -->
     <div class="modal-overlay" id="modal-skin-setup">
@@ -128,6 +137,13 @@
                     <option value="64">Standard (64x64)</option>
                     <option value="128">HD (128x128)</option>
                 </select>
+            </div>
+            <div class="modal-group" id="skin-texture-options">
+                <label class="skin-checkbox-row"><input type="checkbox" id="skin-use-texture" checked> Texture</label>
+                <div id="skin-base-color-row" class="skin-base-color-row" hidden>
+                    <label for="skin-base-color">Base Color</label>
+                    <input type="color" id="skin-base-color" value="#8a8a8a">
+                </div>
             </div>
             <div class="modal-actions">
                 <button class="modal-btn" id="btn-skin-cancel">Cancel</button>
@@ -203,6 +219,21 @@
             <div class="modal-actions">
                 <button class="modal-btn" id="btn-save-as-cancel">Cancel</button>
                 <button class="modal-btn primary" id="btn-save-as-confirm">Save...</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-share-work">
+        <div class="modal share-modal">
+            <h2>Share Work Link</h2>
+            <p class="modal-help">This link includes the current skin and its layers. Anyone opening it can continue editing in their browser.</p>
+            <div class="modal-group">
+                <label for="share-work-url">Share link</label>
+                <input type="text" id="share-work-url" readonly>
+            </div>
+            <div class="modal-actions">
+                <button class="modal-btn" id="btn-share-close">Close</button>
+                <button class="modal-btn primary" id="btn-share-copy">Copy Link</button>
             </div>
         </div>
     </div>
@@ -354,11 +385,18 @@
         </div>
 
         <canvas id="editor-3d-canvas" width="1200" height="900"></canvas>
+        <div id="viewer-customization" class="viewer-customization" aria-label="3D preview settings">
+            <label class="viewer-animation-toggle"><input type="checkbox" id="viewer-animation-toggle"> Animate</label>
+            <button type="button" id="btn-viewer-pose-reset" title="Reset pose" aria-label="Reset pose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg></button>
+        </div>
         <button id="btn-3d-screenshot" type="button" title="Take a 3D skin screenshot" aria-label="Take a 3D skin screenshot">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M4 7h3l1.5-2h7L17 7h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z" />
                 <circle cx="12" cy="13" r="3.5" />
             </svg>
+        </button>
+        <button id="btn-share-work-quick" type="button" title="Share work link" aria-label="Share work link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>
         </button>
     </div>
 
@@ -618,6 +656,30 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" /></svg>
                 </button>
             </div>
+        </div>
+    </div>
+
+    <div id="window-palette-panel" class="adj-window tool-window" style="display: flex; top: auto; bottom: 20px; left: 270px; width: 240px; z-index: 1000;">
+        <div class="adj-header"><span>Palette</span><button class="adj-close-btn">&times;</button></div>
+        <div class="adj-content palette-manager" aria-label="Palette manager">
+            <div class="palette-header"><span>Saved palette</span><select id="palette-select" aria-label="Saved palettes"></select></div>
+            <div class="palette-name-row"><input id="palette-name" type="text" maxlength="32" placeholder="Palette name"><button id="btn-palette-new" type="button" title="New palette" aria-label="New palette">+</button><button id="btn-palette-delete" type="button" title="Delete palette" aria-label="Delete palette">&times;</button></div>
+            <div class="palette-actions"><button id="btn-palette-add-color" type="button">Add current</button><button id="btn-palette-from-skin" type="button">From skin</button></div>
+            <div class="palette-actions"><button id="btn-palette-gradient" type="button">Generate gradient</button></div>
+            <div class="palette-swatches" id="palette-swatches"></div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-palette-gradient">
+        <div class="modal gradient-modal">
+            <h2>Generate Gradient Palette</h2>
+            <div class="gradient-preview" id="gradient-preview"></div>
+            <div class="modal-group gradient-control"><label>Colour Count <span id="gradient-steps-value">9</span></label><input type="range" id="gradient-steps" min="3" max="32" value="9"></div>
+            <div class="modal-group gradient-control"><label>Hue Shifting Angle <span id="gradient-angle-value">45°</span></label><input type="range" id="gradient-angle" min="-120" max="120" value="45"></div>
+            <div class="modal-group gradient-control"><label>Brightness Range <span id="gradient-brightness-value">90%</span></label><input type="range" id="gradient-brightness" min="0" max="100" value="90"></div>
+            <div class="modal-group gradient-control"><label>Saturation Falloff <span id="gradient-saturation-value">33%</span></label><input type="range" id="gradient-saturation" min="0" max="100" value="33"></div>
+            <label class="skin-checkbox-row"><input type="checkbox" id="gradient-replace"> Replace existing palette</label>
+            <div class="modal-actions"><button class="modal-btn" id="btn-gradient-cancel">Cancel</button><button class="modal-btn primary" id="btn-gradient-apply">Generate</button></div>
         </div>
     </div>
 

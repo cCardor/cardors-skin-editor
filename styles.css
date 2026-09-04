@@ -404,7 +404,7 @@
             cursor: grab;
         }
 
-        #btn-3d-screenshot {
+        #btn-3d-screenshot, #btn-share-work-quick {
             position: absolute;
             right: 22px;
             bottom: 22px;
@@ -422,8 +422,9 @@
             cursor: pointer;
         }
 
-        #btn-3d-screenshot:hover { background: #0e639c; border-color: #1177bb; color: #fff; }
-        #btn-3d-screenshot svg { width: 20px; height: 20px; }
+        #btn-3d-screenshot:hover, #btn-share-work-quick:hover { background: #0e639c; border-color: #1177bb; color: #fff; }
+        #btn-3d-screenshot svg, #btn-share-work-quick svg { width: 20px; height: 20px; }
+        #btn-share-work-quick { right: 72px; }
 
         #modal-3d-screenshot .modal { width: min(620px, calc(100vw - 40px)); }
         .screenshot-preview {
@@ -1507,7 +1508,7 @@ body::before {
 .action-btn:hover { color: #fff; border-color: rgba(93, 231, 213, .48); background: rgba(61, 176, 185, .17); }
 .action-btn.active { background: linear-gradient(135deg, var(--ui-accent-strong), var(--ui-violet)); border-color: transparent; }
 
-#btn-3d-screenshot {
+#btn-3d-screenshot, #btn-share-work-quick {
     right: 24px; bottom: 24px; width: 46px; height: 46px;
     color: #dffefa;
     background: linear-gradient(145deg, rgba(38, 69, 103, .95), rgba(20, 35, 60, .95));
@@ -1515,7 +1516,9 @@ body::before {
     border-radius: 14px;
     box-shadow: 0 12px 28px rgba(0,0,0,.3);
 }
-#btn-3d-screenshot:hover { background: linear-gradient(135deg, var(--ui-accent-strong), var(--ui-violet)); border-color: transparent; transform: translateY(-2px); }
+#btn-3d-screenshot:hover, #btn-share-work-quick:hover { background: linear-gradient(135deg, var(--ui-accent-strong), var(--ui-violet)); border-color: transparent; transform: translateY(-2px); }
+#btn-3d-screenshot { right: 78px; }
+#btn-share-work-quick { right: 24px; }
 
 .modal-overlay { background: rgba(3, 8, 20, .7); backdrop-filter: blur(7px); }
 .modal { width: 350px; padding: 20px; color: var(--ui-text); background: #16213a; border-color: rgba(154, 183, 232, .18); border-radius: 16px; box-shadow: 0 28px 80px rgba(0,0,0,.56), inset 0 1px rgba(255,255,255,.05); }
@@ -1584,8 +1587,8 @@ body::before { opacity: .16; background-image: linear-gradient(rgba(255,255,255,
 .part { background: linear-gradient(145deg, #555, #343434); border-color: rgba(255,255,255,.13); }
 .outer-map .part { background: linear-gradient(145deg, #696969, #3d3d3d); border-color: rgba(255,255,255,.22); }
 .tool-btn:hover, .layer-btn:hover, .action-btn:hover { border-color: rgba(255,255,255,.34); background: #343434; }
-#btn-3d-screenshot { background: linear-gradient(145deg, #333, #1b1b1b); border-color: rgba(255,255,255,.22); color: #f3f3f3; }
-#btn-3d-screenshot:hover { background: linear-gradient(135deg, #666, #333); }
+#btn-3d-screenshot, #btn-share-work-quick { background: linear-gradient(145deg, #333, #1b1b1b); border-color: rgba(255,255,255,.22); color: #f3f3f3; }
+#btn-3d-screenshot:hover, #btn-share-work-quick:hover { background: linear-gradient(135deg, #666, #333); }
 
 /* Katman listesi: pasif ve aktif satırlar ile alt araç şeridi aynı dilde. */
 .layer-list { padding: 5px; border-color: var(--ui-border) !important; background: rgba(0,0,0,.22); }
@@ -1892,6 +1895,81 @@ body::before { opacity: .16; background-image: linear-gradient(rgba(255,255,255,
     max-height: min(58vh, 520px);
 }
 #modal-3d-screenshot .modal-actions { justify-content: center; flex-wrap: wrap; }
+
+/* New skin, sharing and 3D presentation controls. */
+.skin-checkbox-row { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.skin-checkbox-row input, .viewer-animation-toggle input { accent-color: #bdbdbd; }
+.skin-base-color-row { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.1); }
+.skin-base-color-row[hidden] { display: flex !important; visibility: hidden; }
+.skin-base-color-row { min-height: 28px; box-sizing: border-box; }
+#modal-skin-setup .modal { min-height: 292px; box-sizing: border-box; }
+.skin-base-color-row label { margin: 0; }
+.skin-base-color-row input[type="color"] { width: 42px; height: 27px; padding: 2px; background: #292929; border: 1px solid rgba(255,255,255,.16); border-radius: 6px; cursor: pointer; }
+.modal-help { margin: -4px 0 16px; color: #b8b8b8; font-size: 12px; line-height: 1.45; }
+.share-modal { width: min(480px, calc(100vw - 32px)); }
+#share-work-url { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; }
+.viewer-customization {
+    position: fixed;
+    right: 136px;
+    bottom: 22px;
+    z-index: 35;
+    display: flex;
+    align-items: end;
+    gap: 8px;
+    padding: 9px;
+    color: #cfcfcf;
+    background: rgba(23,23,23,.94);
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 10px;
+    box-shadow: 0 12px 34px rgba(0,0,0,.44);
+    backdrop-filter: blur(10px);
+}
+.viewer-customization label { display: grid; gap: 4px; color: #aaa; font-size: 10px; font-weight: 650; letter-spacing: .3px; }
+.viewer-customization select { min-width: 92px; padding: 5px 7px; color: #ececec; background: #292929; border: 1px solid rgba(255,255,255,.14); border-radius: 6px; outline: none; font-size: 11px; }
+.viewer-customization .viewer-animation-toggle { display: flex; align-items: center; gap: 6px; height: 27px; color: #d8d8d8; white-space: nowrap; }
+.viewer-customization button { display: grid; place-items: center; width: 27px; height: 27px; padding: 0; color: #e3e3e3; background: #292929; border: 1px solid rgba(255,255,255,.15); border-radius: 6px; cursor: pointer; }
+.viewer-customization button svg { width: 14px; height: 14px; }
+.viewer-customization button:hover { color: #fff; background: #3a3a3a; }
+.viewer-customization[hidden] { display: none; }
+
+.dropdown-scene-control { gap: 12px; cursor: default; }
+.dropdown-scene-control:hover { background: transparent !important; color: #d0d0d0 !important; }
+.dropdown-scene-control select { width: 104px; padding: 4px 6px; color: #ededed; background: #292929; border: 1px solid rgba(255,255,255,.14); border-radius: 5px; outline: none; font: 11px inherit; }
+
+/* Saved palettes live with the color history, but remain distinct from it. */
+#window-palette-panel .palette-manager { width: auto; margin: 0; padding: 10px; border-top: 0; }
+.palette-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #d2d2d2; font-size: 11px; font-weight: 650; letter-spacing: .35px; }
+.palette-header select { width: 138px; padding: 4px 6px; color: #ececec; background: #282828; border: 1px solid rgba(255,255,255,.14); border-radius: 5px; outline: none; font: 11px inherit; }
+.palette-name-row { display: flex; gap: 5px; margin-top: 7px; }
+.palette-name-row input { min-width: 0; flex: 1; height: 25px; box-sizing: border-box; padding: 4px 7px; color: #eaeaea; background: #202020; border: 1px solid rgba(255,255,255,.14); border-radius: 5px; outline: none; font: 11px inherit; }
+.palette-name-row button, .palette-actions button { height: 25px; padding: 0 8px; color: #d5d5d5; background: #292929; border: 1px solid rgba(255,255,255,.12); border-radius: 5px; cursor: pointer; font: 600 11px inherit; }
+.palette-name-row button { width: 25px; padding: 0; font-size: 16px; line-height: 1; }
+.palette-name-row button:hover, .palette-actions button:hover { color: #fff; background: #3b3b3b; border-color: rgba(255,255,255,.28); }
+.palette-actions { display: flex; gap: 5px; margin-top: 7px; }
+.palette-actions button { flex: 1; }
+.palette-actions + .palette-actions { margin-top: 5px; }
+.palette-swatches { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 0; min-height: 21px; margin: 8px auto 0; overflow: hidden; }
+.palette-swatch { width: 20px; height: 20px; padding: 0; border: 0; border-radius: 0; cursor: pointer; box-shadow: none; }
+.palette-swatch:hover { position: relative; z-index: 1; filter: brightness(1.12); outline: 1px solid rgba(255,255,255,.85); outline-offset: -1px; }
+
+.gradient-modal { width: min(390px, calc(100vw - 32px)); }
+.gradient-preview { display: flex; height: 42px; margin: 2px 0 16px; overflow: hidden; border-radius: 7px; }
+.gradient-preview span { flex: 1; min-width: 2px; }
+.gradient-control { margin-bottom: 12px; }
+.gradient-control label { display: flex; justify-content: space-between; }
+.gradient-control label span { color: #f0f0f0; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.gradient-control input[type="range"] { width: 100%; margin: 5px 0 0; accent-color: #c8c8c8; }
+
+/* Easter egg: after ten logo clicks, Necla pops up from below and leaves again. */
+#necla-easter-egg { position: fixed; left: 50%; top: 100%; z-index: 40000; display: none; pointer-events: none; }
+#necla-easter-egg img { display: block; max-width: min(62vw, 520px); max-height: 86vh; object-fit: contain; }
+#necla-easter-egg.is-playing { display: block; animation: necla-rise-and-leave 4.2s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes necla-rise-and-leave {
+    0% { transform: translate(-50%, 16%); opacity: 0; }
+    14% { opacity: 1; }
+    26%, 70% { transform: translate(-50%, -100%); opacity: 1; }
+    100% { transform: translate(-50%, 16%); opacity: 0; }
+}
 
 /* Katman paneli, 3D yön küpü ve geçmiş kontrollerini tek bir sütunda toplar. */
 .layer-panel-stack {

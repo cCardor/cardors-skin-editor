@@ -78,6 +78,9 @@ let currentR = 0, currentG = 0, currentB = 0; // YENİ: Başlangıç Siyah
 let currentH = 0, currentS = 0, currentL = 0, currentA = 1.0;
 let secondaryColor = { h: 0, s: 0, l: 100, a: 1.0 }; // Beyaz
 let colorHistory = [];
+let savedPalettes = [{ id: 'palette-1', name: 'My Palette', colors: [] }];
+let activePaletteId = 'palette-1';
+let paletteIdCounter = 2;
 
 let isCopyModeActive = false;
 let hoveredLimbForCopy = null;
@@ -104,6 +107,25 @@ const container2D = document.getElementById('editor-2d-container');
 const wrapper2D = document.getElementById('editor-2d-wrapper');
 let view2D = { x: 0, y: 0, scale: 1 };
 let isPanning2D = false;
+
+let logoClickCount = 0;
+let neclaEasterEggTimer = null;
+document.getElementById('app-logo-easter-egg').addEventListener('click', () => {
+    logoClickCount += 1;
+    if (logoClickCount < 10) return;
+    logoClickCount = 0;
+    const egg = document.getElementById('necla-easter-egg');
+    clearTimeout(neclaEasterEggTimer);
+    egg.classList.remove('is-playing');
+    void egg.offsetWidth; // restart the animation if the egg is triggered again
+    egg.classList.add('is-playing');
+    const eggAudio = document.getElementById('necla-easter-egg-audio');
+    if (eggAudio) {
+        eggAudio.currentTime = 0;
+        eggAudio.play().catch(() => {});
+    }
+    neclaEasterEggTimer = setTimeout(() => egg.classList.remove('is-playing'), 4250);
+});
 
 const refInput = document.getElementById('reference-upload-hidden'); 
 let refWindowCounter = 0; 
@@ -385,6 +407,138 @@ function renderColorHistory() {
     });
 }
 
+function normalizePaletteColor(color) {
+    const normalized = {
+        h: Math.max(0, Math.min(360, Math.round(Number(color.h) || 0))),
+        s: Math.max(0, Math.min(100, Math.round(Number(color.s) || 0))),
+        l: Math.max(0, Math.min(100, Math.round(Number(color.l) || 0))),
+        a: Math.max(0, Math.min(1, Number.isFinite(Number(color.a)) ? Number(color.a) : 1))
+    };
+    const hasRgb = [color.r, color.g, color.b].every(Number.isFinite);
+    const [r, g, b] = hasRgb ? [color.r, color.g, color.b].map(value => Math.max(0, Math.min(255, Math.round(value)))) : hslToRgbArr(normalized.h / 360, normalized.s / 100, normalized.l / 100);
+    return { ...normalized, r, g, b };
+}
+function getActivePalette() {
+    let palette = savedPalettes.find(item => item.id === activePaletteId);
+    if (!palette) { palette = savedPalettes[0] || { id: 'palette-1', name: 'My Palette', colors: [] }; if (!savedPalettes.length) savedPalettes.push(palette); activePaletteId = palette.id; }
+    return palette;
+}
+function dedupePaletteColors(colors) {
+    const seen = new Set();
+    return colors.map(normalizePaletteColor).filter(color => {
+        const key = `${color.r}|${color.g}|${color.b}|${color.a}`;
+        if (seen.has(key)) return false;
+        seen.add(key); return true;
+    });
+}
+function selectPaletteColor(color) {
+    const c = normalizePaletteColor(color);
+    currentR = c.r; currentG = c.g; currentB = c.b; currentA = c.a;
+    const hsl = rgbToHslObj(c.r, c.g, c.b);
+    currentH = Math.round(hsl.h * 360); currentS = Math.round(hsl.s * 100); currentL = Math.round(hsl.l * 100);
+    updateUIColors();
+}
+function renderPaletteManager() {
+    const select = document.getElementById('palette-select');
+    const nameInput = document.getElementById('palette-name');
+    const swatches = document.getElementById('palette-swatches');
+    if (!select || !nameInput || !swatches) return;
+    const active = getActivePalette();
+    active.colors = dedupePaletteColors(active.colors);
+    select.innerHTML = '';
+    savedPalettes.forEach(palette => { const option = document.createElement('option'); option.value = palette.id; option.textContent = palette.name; select.appendChild(option); });
+    select.value = active.id; nameInput.value = active.name;
+    swatches.innerHTML = '';
+    // Keep a short one-line palette centred, but once it wraps, reserve a
+    // complete row so every following row begins at the left edge.
+    const swatchesPerRow = 11;
+    swatches.style.width = `${Math.min(Math.max(active.colors.length, 1), swatchesPerRow) * 20}px`;
+    active.colors.forEach((color, index) => {
+        const swatch = document.createElement('button'); swatch.type = 'button'; swatch.className = 'palette-swatch';
+        swatch.style.background = `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`;
+        swatch.title = `#${[color.r, color.g, color.b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase()} — click to select, right-click to remove`;
+        swatch.addEventListener('click', () => selectPaletteColor(color));
+        swatch.addEventListener('contextmenu', event => { event.preventDefault(); active.colors.splice(index, 1); renderPaletteManager(); if (typeof schedulePreferencesSave === 'function') schedulePreferencesSave(); });
+        swatches.appendChild(swatch);
+    });
+}
+function addColorToActivePalette(color = { h: currentH, s: currentS, l: currentL, a: currentA, r: currentR, g: currentG, b: currentB }) {
+    const palette = getActivePalette(); const normalized = normalizePaletteColor(color);
+    if (!palette.colors.some(c => c.r === normalized.r && c.g === normalized.g && c.b === normalized.b && c.a === normalized.a)) palette.colors.push(normalized);
+    renderPaletteManager(); if (typeof schedulePreferencesSave === 'function') schedulePreferencesSave();
+}
+function extractPaletteFromSkin() {
+    const counts = new Map(); const pixels = ctx2d.getImageData(0, 0, SKIN_RES, SKIN_RES).data;
+    for (let i = 0; i < pixels.length; i += 4) {
+        if (pixels[i + 3] < 8) continue;
+        const key = `${pixels[i]},${pixels[i + 1]},${pixels[i + 2]},${pixels[i + 3]}`;
+        counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    const palette = getActivePalette();
+    palette.colors = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 32).map(([key]) => {
+        const [r, g, b, a] = key.split(',').map(Number); const hsl = rgbToHslObj(r, g, b);
+        return normalizePaletteColor({ h: hsl.h * 360, s: hsl.s * 100, l: hsl.l * 100, a: a / 255, r, g, b });
+    }).sort((a, b) => {
+        const aGray = a.s < 8, bGray = b.s < 8;
+        if (aGray && bGray) return a.l - b.l;
+        if (aGray) return 1;
+        if (bGray) return -1;
+        return a.h - b.h || a.l - b.l || a.s - b.s;
+    });
+    renderPaletteManager(); if (typeof schedulePreferencesSave === 'function') schedulePreferencesSave();
+}
+function generateHueShiftGradient() {
+    const steps = Number(document.getElementById('gradient-steps').value);
+    let angle = Number(document.getElementById('gradient-angle').value);
+    const brightnessRange = Number(document.getElementById('gradient-brightness').value) / 100;
+    const saturationFalloff = Number(document.getElementById('gradient-saturation').value) / 100;
+    const base = { h: currentH, s: currentS, l: currentL };
+    // Same single-colour hue-shift concept as the referenced Blockbench tool:
+    // greens shift towards the opposite direction to keep ramps natural.
+    if (base.h >= 100 && base.h < 260) angle *= -1;
+    const minLightness = Math.max(0, base.l - brightnessRange * base.l);
+    const maxLightness = Math.min(100, base.l + brightnessRange * (100 - base.l));
+    const range = maxLightness - minLightness;
+    const baseIndex = range > 0 ? Math.round(((base.l - minLightness) / range) * (steps - 1)) : Math.floor(steps / 2);
+    const saturationRange = Math.max(base.l - minLightness, maxLightness - base.l, 1);
+    return Array.from({ length: steps }, (_, index) => {
+        const lightness = steps === 1 ? base.l : minLightness + range * index / (steps - 1);
+        const shift = index < baseIndex
+            ? -angle * ((baseIndex - index) / Math.max(1, baseIndex)) * ((baseIndex + 1) / (steps + 1))
+            : angle * ((index - baseIndex) / Math.max(1, steps - 1 - baseIndex)) * (1 - (baseIndex + 1) / (steps + 1));
+        const distance = Math.abs(lightness - base.l) / saturationRange;
+        const saturation = base.s * (1 - saturationFalloff * Math.pow(Math.min(1, distance), 1.6));
+        const hue = (base.h + shift + 360) % 360;
+        const [r, g, b] = hslToRgbArr(hue / 360, saturation / 100, lightness / 100);
+        return normalizePaletteColor({ h: hue, s: saturation, l: lightness, a: currentA, r, g, b });
+    });
+}
+function updateGradientPreview() {
+    const fields = [['gradient-steps', 'gradient-steps-value', value => value], ['gradient-angle', 'gradient-angle-value', value => `${value}°`], ['gradient-brightness', 'gradient-brightness-value', value => `${value}%`], ['gradient-saturation', 'gradient-saturation-value', value => `${value}%`]];
+    fields.forEach(([inputId, valueId, formatter]) => { const value = document.getElementById(inputId).value; document.getElementById(valueId).textContent = formatter(value); });
+    const colors = generateHueShiftGradient();
+    document.getElementById('gradient-preview').innerHTML = colors.map(color => `<span style="background:rgba(${color.r},${color.g},${color.b},${color.a})"></span>`).join('');
+}
+function openGradientPaletteDialog() {
+    document.getElementById('modal-palette-gradient').style.display = 'flex';
+    updateGradientPreview();
+}
+document.getElementById('palette-select').addEventListener('change', event => { activePaletteId = event.target.value; renderPaletteManager(); if (typeof schedulePreferencesSave === 'function') schedulePreferencesSave(); });
+document.getElementById('palette-name').addEventListener('change', event => { getActivePalette().name = event.target.value.trim() || 'Untitled Palette'; renderPaletteManager(); if (typeof schedulePreferencesSave === 'function') schedulePreferencesSave(); });
+document.getElementById('btn-palette-new').addEventListener('click', () => { const palette = { id: `palette-${paletteIdCounter++}`, name: `Palette ${savedPalettes.length + 1}`, colors: [] }; savedPalettes.push(palette); activePaletteId = palette.id; renderPaletteManager(); if (typeof schedulePreferencesSave === 'function') schedulePreferencesSave(); });
+document.getElementById('btn-palette-delete').addEventListener('click', () => { if (savedPalettes.length <= 1) { getActivePalette().colors = []; } else { savedPalettes = savedPalettes.filter(palette => palette.id !== activePaletteId); activePaletteId = savedPalettes[0].id; } renderPaletteManager(); if (typeof schedulePreferencesSave === 'function') schedulePreferencesSave(); });
+document.getElementById('btn-palette-add-color').addEventListener('click', () => addColorToActivePalette());
+document.getElementById('btn-palette-from-skin').addEventListener('click', extractPaletteFromSkin);
+document.getElementById('btn-palette-gradient').addEventListener('click', openGradientPaletteDialog);
+['gradient-steps', 'gradient-angle', 'gradient-brightness', 'gradient-saturation'].forEach(id => document.getElementById(id).addEventListener('input', updateGradientPreview));
+document.getElementById('btn-gradient-cancel').addEventListener('click', () => { document.getElementById('modal-palette-gradient').style.display = 'none'; });
+document.getElementById('btn-gradient-apply').addEventListener('click', () => {
+    const palette = getActivePalette(); const gradient = generateHueShiftGradient();
+    palette.colors = document.getElementById('gradient-replace').checked ? gradient : dedupePaletteColors([...palette.colors, ...gradient]);
+    document.getElementById('modal-palette-gradient').style.display = 'none'; renderPaletteManager();
+    if (typeof schedulePreferencesSave === 'function') schedulePreferencesSave();
+});
+
 function updateTexture() {
     window.cachedImageData = ctx2d.getImageData(0,0,SKIN_RES,SKIN_RES).data;
     renderCtx.imageSmoothingEnabled = false;
@@ -637,7 +791,11 @@ window.addEventListener('click', (e) => { if (!e.target.closest('.menu-item')) d
 function closeAllMenus() { document.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active')); }
 
 // === TEMPLATE DOSYALARINI YÜKLEME MOTORU ===
-function loadTemplateAndCreateDoc(name, res, model) {
+function loadTemplateAndCreateDoc(name, res, model, useTexture = true, baseColor = '#8a8a8a') {
+    if (!useTexture) {
+        if (typeof createNewDocument === 'function') createNewDocument(name, null, res, model, baseColor);
+        return;
+    }
     const img = new Image();
     let fileName = "";
     
@@ -661,10 +819,18 @@ function loadTemplateAndCreateDoc(name, res, model) {
     img.src = fileName;
 }
 
-let currentSkinSetupMode = 'new'; 
-document.getElementById('menu-new-skin').addEventListener('click', () => { closeAllMenus(); currentSkinSetupMode = 'new'; document.getElementById('skin-modal-title').innerText = "Create New Skin"; document.getElementById('modal-skin-setup').style.display = 'flex'; });
-document.getElementById('menu-open-skin').addEventListener('click', () => { closeAllMenus(); currentSkinSetupMode = 'open'; document.getElementById('skin-modal-title').innerText = "Open Existing Skin"; document.getElementById('modal-skin-setup').style.display = 'flex'; });
+let currentSkinSetupMode = 'new';
+function openSkinSetup(mode) {
+    currentSkinSetupMode = mode;
+    const isNew = mode === 'new';
+    document.getElementById('skin-modal-title').innerText = isNew ? 'Create New Skin' : 'Open Existing Skin';
+    document.getElementById('skin-texture-options').hidden = !isNew;
+    document.getElementById('modal-skin-setup').style.display = 'flex';
+}
+document.getElementById('menu-new-skin').addEventListener('click', () => { closeAllMenus(); openSkinSetup('new'); });
+document.getElementById('menu-open-skin').addEventListener('click', () => { closeAllMenus(); openSkinSetup('open'); });
 document.getElementById('btn-skin-cancel').addEventListener('click', () => { document.getElementById('modal-skin-setup').style.display = 'none'; });
+document.getElementById('skin-use-texture').addEventListener('change', (event) => { document.getElementById('skin-base-color-row').hidden = event.target.checked; });
 document.getElementById('btn-skin-confirm').addEventListener('click', () => {
     document.getElementById('modal-skin-setup').style.display = 'none';
     const selectedModel = document.getElementById('skin-model-select').value;
@@ -673,7 +839,7 @@ document.getElementById('btn-skin-confirm').addEventListener('click', () => {
     if (currentSkinSetupMode === 'new') {
         // YENİ: Artık direkt boş dosya açmak yerine senin template dosyalarını yüklüyor
         const docName = "Skin " + (typeof docIdCounter !== 'undefined' ? docIdCounter : "New");
-        loadTemplateAndCreateDoc(docName, selectedRes, selectedModel);
+        loadTemplateAndCreateDoc(docName, selectedRes, selectedModel, document.getElementById('skin-use-texture').checked, document.getElementById('skin-base-color').value);
     } else if (currentSkinSetupMode === 'open') {
         currentModel = selectedModel; 
         document.getElementById('texture-upload-hidden').click();
@@ -716,6 +882,7 @@ function updateMenuStates() {
     [
         ['.check-toolbar', 'window-toolbar'],
         ['.check-color', 'window-color-panel'],
+        ['.check-palette', 'window-palette-panel'],
         ['.check-tool-settings', 'window-tool-settings'],
         ['.check-layers', 'window-layers-panel']
     ].forEach(([check, windowId]) => {
@@ -963,6 +1130,133 @@ function init3DViewer() {
     } catch (err) { return false; }
 }
 
+// === 3D PREVIEW: SCENES, POSES AND A SMALL OPTIONAL WALK CYCLE ===
+let viewerSceneMode = 'editor';
+let viewerPoseMode = 'standing';
+let viewerAnimationEnabled = false;
+let viewerPoseFrame = null;
+let sceneEnvironment = null;
+
+function makePixelTexture(kind) {
+    const palette = {
+        grass: ['#6b9c3d', '#7faa46', '#5b8534', '#89b84e'],
+        netherrack: ['#7d302d', '#953d35', '#622523', '#ad5045'],
+        endstone: ['#d8d1a2', '#c4bb86', '#ebe2b4', '#aaa272']
+    }[kind] || ['#777', '#999', '#555'];
+    const c = document.createElement('canvas'); c.width = c.height = 16;
+    const x = c.getContext('2d'); x.fillStyle = palette[0]; x.fillRect(0, 0, 16, 16);
+    for (let i = 0; i < 62; i++) {
+        const px = (i * 7 + i * i * 3) % 16, py = (i * 11 + i * i) % 16;
+        x.fillStyle = palette[1 + (i % (palette.length - 1))]; x.fillRect(px, py, i % 5 === 0 ? 2 : 1, 1);
+    }
+    const texture = new THREE.CanvasTexture(c); texture.magFilter = THREE.NearestFilter; texture.minFilter = THREE.NearestFilter;
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; texture.repeat.set(22, 22);
+    return texture;
+}
+
+function makeSkyImage(mode) {
+    if (mode === 'transparent') return 'transparent';
+    if (mode === 'editor') return bgPicker.value;
+    const colors = mode === 'overworld' ? ['#6db8eb', '#b7e6ff', '#ffffff'] : mode === 'nether' ? ['#3a1017', '#8c2928', '#c04735'] : ['#151022', '#3b3154', '#b4ac78'];
+    const c = document.createElement('canvas'); c.width = 512; c.height = 320; const x = c.getContext('2d');
+    const g = x.createLinearGradient(0, 0, 0, c.height); g.addColorStop(0, colors[0]); g.addColorStop(1, colors[1]); x.fillStyle = g; x.fillRect(0, 0, c.width, c.height);
+    if (mode === 'overworld') {
+        x.fillStyle = colors[2];
+        [[48,45,84,12],[155,81,110,15],[336,40,98,13],[390,115,68,10],[20,155,120,14]].forEach(([px,py,w,h]) => { x.fillRect(px,py,w,h); x.fillRect(px+12,py-h/2,w*.62,h*2); });
+    } else {
+        x.globalAlpha = .28; x.fillStyle = colors[2];
+        for (let i = 0; i < 45; i++) x.fillRect((i * 73) % 512, (i * 47) % 250, 3 + (i % 5), 3 + (i % 3));
+    }
+    return `url(${c.toDataURL('image/png')})`;
+}
+
+function updateSceneEnvironment(mode) {
+    if (!viewer3d?.scene) return;
+    if (sceneEnvironment) { viewer3d.scene.remove(sceneEnvironment); sceneEnvironment.traverse(o => { o.geometry?.dispose?.(); o.material?.map?.dispose?.(); o.material?.dispose?.(); }); sceneEnvironment = null; }
+    if (!['overworld', 'nether', 'end'].includes(mode)) return;
+    const kind = mode === 'overworld' ? 'grass' : mode === 'nether' ? 'netherrack' : 'endstone';
+    const group = new THREE.Group(); group.name = 'preview-scene-ground';
+    const bounds = new THREE.Box3().setFromObject(viewer3d.playerObject);
+    const groundY = Number.isFinite(bounds.min.y) ? bounds.min.y - .08 : -16;
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(220, 220), new THREE.MeshBasicMaterial({ map: makePixelTexture(kind), side: THREE.DoubleSide }));
+    floor.rotation.x = -Math.PI / 2; floor.position.y = groundY; group.add(floor);
+    // A small irregular block rim makes the floor read as real cubic terrain.
+    const blockMaterial = new THREE.MeshBasicMaterial({ map: makePixelTexture(kind) });
+    for (let i = 0; i < 18; i++) {
+        const block = new THREE.Mesh(new THREE.BoxGeometry(3, 3, 3), blockMaterial.clone());
+        block.position.set(((i * 19) % 40) - 20, groundY + 1.5, -18 - ((i * 11) % 10)); group.add(block);
+    }
+    sceneEnvironment = group; viewer3d.scene.add(group);
+}
+
+function applyViewerScene(mode = viewerSceneMode) {
+    viewerSceneMode = mode === 'transparent' ? 'transparent' : 'editor';
+    if (!viewer3d) return;
+    // skinview3d renders to an alpha canvas. Applying the scene as the canvas
+    // background makes every browser display it consistently, including when
+    // the viewer internally resets Scene.background during a skin reload.
+    canvas3d.style.background = viewerSceneMode === 'transparent' ? 'transparent' : bgPicker.value;
+    viewer3d.scene.background = null;
+    viewer3d.scene.fog = null;
+    viewer3d.renderer?.setClearColor(0x000000, 0);
+    updateSceneEnvironment('');
+    if (typeof schedulePreferencesSave === 'function') schedulePreferencesSave();
+}
+
+function setPreviewPose(mode = viewerPoseMode, phase = 0) {
+    viewerPoseMode = mode;
+    const skin = viewer3d?.playerObject?.skin;
+    if (!skin) return;
+    const parts = ['head', 'body', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg'];
+    parts.forEach(name => {
+        const part = skin[name];
+        if (!part) return;
+        part.rotation.set(0, 0, 0);
+    });
+    const setX = (name, value) => {
+        const part = skin[name]; if (!part) return;
+        part.rotation.x = value;
+    };
+    if (mode === 'walking' || mode === 'running') {
+        const swing = Math.sin(phase) * (mode === 'running' ? .92 : .58);
+        setX('rightArm', swing); setX('leftArm', -swing); setX('rightLeg', -swing); setX('leftLeg', swing);
+        skin.body.rotation.x = mode === 'running' ? .12 : 0;
+    } else if (mode === 'sitting') {
+        setX('rightLeg', -Math.PI / 2); setX('leftLeg', -Math.PI / 2);
+        setX('rightArm', -.16); setX('leftArm', -.16);
+        skin.body.rotation.x = -.08;
+    }
+    viewer3d.playerObject.updateMatrixWorld(true);
+    if (typeof viewer3d.render === 'function') viewer3d.render();
+    else viewer3d.renderer?.render(viewer3d.scene, viewer3d.camera);
+}
+
+function updatePreviewAnimation() {
+    cancelAnimationFrame(viewerPoseFrame);
+    if (!viewerAnimationEnabled || !['walking', 'running'].includes(viewerPoseMode)) return;
+    const start = performance.now();
+    const animate = (now) => {
+        if (!viewerAnimationEnabled) return;
+        setPreviewPose(viewerPoseMode, (now - start) / (viewerPoseMode === 'running' ? 180 : 300));
+        viewerPoseFrame = requestAnimationFrame(animate);
+    };
+    viewerPoseFrame = requestAnimationFrame(animate);
+}
+
+document.getElementById('viewer-scene-select').addEventListener('change', event => { event.stopPropagation(); applyViewerScene(event.target.value); });
+document.getElementById('viewer-animation-toggle').addEventListener('change', event => {
+    viewerAnimationEnabled = event.target.checked;
+    if (viewerAnimationEnabled) setPreviewPose('walking');
+    updatePreviewAnimation();
+    if (typeof schedulePreferencesSave === 'function') schedulePreferencesSave();
+});
+document.getElementById('btn-viewer-pose-reset').addEventListener('click', () => {
+    viewerAnimationEnabled = false; viewerPoseMode = 'standing';
+    document.getElementById('viewer-animation-toggle').checked = false;
+    setPreviewPose('standing'); updatePreviewAnimation();
+    if (typeof schedulePreferencesSave === 'function') schedulePreferencesSave();
+});
+
 let screenshot3DBlob = null;
 let screenshot3DUrl = null;
 
@@ -1044,6 +1338,7 @@ async function take3DScreenshot() {
     if (!viewer3d || !viewer3d.renderer) return;
     const renderer = viewer3d.renderer;
     const originalBackground = viewer3d.scene.background;
+    const originalEnvironmentVisible = sceneEnvironment?.visible;
     const originalClearColor = new THREE.Color();
     renderer.getClearColor(originalClearColor);
     const originalClearAlpha = renderer.getClearAlpha();
@@ -1051,6 +1346,7 @@ async function take3DScreenshot() {
     try {
         // Sadece dış ortamı saydamlaştırır; skin dokusu ve 3D katmanları aynen kalır.
         viewer3d.scene.background = null;
+        if (sceneEnvironment) sceneEnvironment.visible = false;
         renderer.setClearColor(0x000000, 0);
         if (typeof viewer3d.render === 'function') viewer3d.render();
         else renderer.render(viewer3d.scene, viewer3d.camera);
@@ -1069,6 +1365,7 @@ async function take3DScreenshot() {
         alert('The 3D screenshot could not be created.');
     } finally {
         viewer3d.scene.background = originalBackground;
+        if (sceneEnvironment) sceneEnvironment.visible = originalEnvironmentVisible !== false;
         renderer.setClearColor(originalClearColor, originalClearAlpha);
         if (typeof viewer3d.render === 'function') viewer3d.render();
         else renderer.render(viewer3d.scene, viewer3d.camera);
@@ -1105,6 +1402,7 @@ canvas3d.addEventListener('wheel', (e) => { if (isRotating) { e.preventDefault()
 canvas3d.addEventListener('contextmenu', (e) => e.preventDefault());
 bgPicker.addEventListener('input', (e) => {
     if(viewer3d) viewer3d.scene.background = new THREE.Color(e.target.value);
+    if (viewerSceneMode === 'editor') applyViewerScene('editor');
     if (typeof schedulePreferencesSave === 'function') schedulePreferencesSave();
 });
 
@@ -1161,6 +1459,9 @@ function applyLiveTexture(modelType) {
         }
         enforceUIVisibilityState(); updateTexture();
         updateOrientationCube();
+        applyViewerScene(viewerSceneMode);
+        setPreviewPose(viewerPoseMode);
+        updatePreviewAnimation();
     }).catch(e => console.error("Doku Yükleme Hatası:", e));
 }
 
