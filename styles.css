@@ -404,7 +404,7 @@
             cursor: grab;
         }
 
-        #btn-3d-screenshot, #btn-share-work-quick {
+        #btn-3d-screenshot, #btn-share-work-quick, #btn-3d-explode {
             position: absolute;
             right: 22px;
             bottom: 22px;
@@ -423,7 +423,7 @@
         }
 
         #btn-3d-screenshot:hover, #btn-share-work-quick:hover { background: #0e639c; border-color: #1177bb; color: #fff; }
-        #btn-3d-screenshot svg, #btn-share-work-quick svg { width: 20px; height: 20px; }
+        #btn-3d-screenshot svg, #btn-share-work-quick svg, #btn-3d-explode svg { width: 20px; height: 20px; }
         #btn-share-work-quick { right: 72px; }
 
         #modal-3d-screenshot .modal { width: min(620px, calc(100vw - 40px)); }
@@ -1508,7 +1508,7 @@ body::before {
 .action-btn:hover { color: #fff; border-color: rgba(93, 231, 213, .48); background: rgba(61, 176, 185, .17); }
 .action-btn.active { background: linear-gradient(135deg, var(--ui-accent-strong), var(--ui-violet)); border-color: transparent; }
 
-#btn-3d-screenshot, #btn-share-work-quick {
+#btn-3d-screenshot, #btn-share-work-quick, #btn-3d-explode {
     right: 24px; bottom: 24px; width: 46px; height: 46px;
     color: #dffefa;
     background: linear-gradient(145deg, rgba(38, 69, 103, .95), rgba(20, 35, 60, .95));
@@ -1518,6 +1518,7 @@ body::before {
 }
 #btn-3d-screenshot:hover, #btn-share-work-quick:hover { background: linear-gradient(135deg, var(--ui-accent-strong), var(--ui-violet)); border-color: transparent; transform: translateY(-2px); }
 #btn-3d-screenshot { right: 78px; }
+#btn-3d-explode { right: 132px; }
 #btn-share-work-quick { right: 24px; }
 
 .modal-overlay { background: rgba(3, 8, 20, .7); backdrop-filter: blur(7px); }
@@ -1587,7 +1588,9 @@ body::before { opacity: .16; background-image: linear-gradient(rgba(255,255,255,
 .part { background: linear-gradient(145deg, #555, #343434); border-color: rgba(255,255,255,.13); }
 .outer-map .part { background: linear-gradient(145deg, #696969, #3d3d3d); border-color: rgba(255,255,255,.22); }
 .tool-btn:hover, .layer-btn:hover, .action-btn:hover { border-color: rgba(255,255,255,.34); background: #343434; }
-#btn-3d-screenshot, #btn-share-work-quick { background: linear-gradient(145deg, #333, #1b1b1b); border-color: rgba(255,255,255,.22); color: #f3f3f3; }
+#btn-3d-screenshot, #btn-share-work-quick, #btn-3d-explode { background: linear-gradient(145deg, #333, #1b1b1b); border-color: rgba(255,255,255,.22); color: #f3f3f3; }
+#btn-3d-explode:hover { background: linear-gradient(135deg, #666, #333); transform: translateY(-2px); }
+#btn-3d-explode[aria-pressed="true"] { background: #505050; border-color: #ddd; }
 #btn-3d-screenshot:hover, #btn-share-work-quick:hover { background: linear-gradient(135deg, #666, #333); }
 
 /* Katman listesi: pasif ve aktif satırlar ile alt araç şeridi aynı dilde. */
@@ -1910,7 +1913,7 @@ body::before { opacity: .16; background-image: linear-gradient(rgba(255,255,255,
 #share-work-url { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; }
 .viewer-customization {
     position: fixed;
-    right: 136px;
+    right: 190px;
     bottom: 22px;
     z-index: 35;
     display: flex;

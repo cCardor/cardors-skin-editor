@@ -1137,71 +1137,264 @@ let viewerAnimationEnabled = false;
 let viewerPoseFrame = null;
 let sceneEnvironment = null;
 
-function makePixelTexture(kind) {
-    const palette = {
-        grass: ['#6b9c3d', '#7faa46', '#5b8534', '#89b84e'],
-        netherrack: ['#7d302d', '#953d35', '#622523', '#ad5045'],
-        endstone: ['#d8d1a2', '#c4bb86', '#ebe2b4', '#aaa272']
-    }[kind] || ['#777', '#999', '#555'];
-    const c = document.createElement('canvas'); c.width = c.height = 16;
-    const x = c.getContext('2d'); x.fillStyle = palette[0]; x.fillRect(0, 0, 16, 16);
-    for (let i = 0; i < 62; i++) {
-        const px = (i * 7 + i * i * 3) % 16, py = (i * 11 + i * i) % 16;
-        x.fillStyle = palette[1 + (i % (palette.length - 1))]; x.fillRect(px, py, i % 5 === 0 ? 2 : 1, 1);
-    }
-    const texture = new THREE.CanvasTexture(c); texture.magFilter = THREE.NearestFilter; texture.minFilter = THREE.NearestFilter;
-    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; texture.repeat.set(22, 22);
+function makeSceneTexture(name, sourceTexture, repeatX, repeatY, tint = null) {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 16;
+    const context = canvas.getContext('2d');
+    context.fillStyle = tint || (name === 'netherrack' ? '#713434' : '#806044');
+    context.fillRect(0, 0, 16, 16);
+    // Allocate with skinview3d's own classes and an independent image Source.
+    const texture = new sourceTexture.constructor(canvas);
+    texture.colorSpace = sourceTexture.colorSpace;
+    texture.magFilter = THREE.NearestFilter;
+    texture.minFilter = THREE.NearestFilter;
+    texture.generateMipmaps = false;
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(repeatX, repeatY);
+    texture.anisotropy = 1;
+    texture.needsUpdate = true;
+    const image = new Image();
+    image.onload = () => {
+        if (texture.userData.disposed) return;
+        context.clearRect(0, 0, 16, 16);
+        context.drawImage(image, 0, 0, 16, 16);
+        if (tint) {
+            context.globalCompositeOperation = 'multiply';
+            context.fillStyle = tint;
+            context.fillRect(0, 0, 16, 16);
+            context.globalCompositeOperation = 'source-over';
+        }
+        texture.needsUpdate = true;
+    };
+    image.onerror = () => console.warn('Scene texture could not be loaded:', name);
+    image.src = 'assets/scenes/' + name + '.png';
     return texture;
 }
 
 function makeSkyImage(mode) {
     if (mode === 'transparent') return 'transparent';
     if (mode === 'editor') return bgPicker.value;
-    const colors = mode === 'overworld' ? ['#6db8eb', '#b7e6ff', '#ffffff'] : mode === 'nether' ? ['#3a1017', '#8c2928', '#c04735'] : ['#151022', '#3b3154', '#b4ac78'];
-    const c = document.createElement('canvas'); c.width = 512; c.height = 320; const x = c.getContext('2d');
-    const g = x.createLinearGradient(0, 0, 0, c.height); g.addColorStop(0, colors[0]); g.addColorStop(1, colors[1]); x.fillStyle = g; x.fillRect(0, 0, c.width, c.height);
+    // Resolution-independent sky; no enlarged bitmap clouds or floating squares.
+    return mode === 'overworld'
+        ? 'linear-gradient(to bottom, #4386d5 0%, #79b3eb 45%, #b5d8f5 70%, #b5d8f5 100%)'
+        : 'linear-gradient(to bottom, #200c12 0%, #451b22 45%, #74352f 75%, #74352f 100%)';
+}
+
+function updateSceneGroundVisibility() {
+    if (!sceneEnvironment || !viewer3d?.camera) return;
+    viewer3d.camera.updateMatrixWorld();
+    // Hide the entire slab (including its underside) below the top surface so
+    // the soles remain visible. The ground is outside the painting raycast.
+    sceneEnvironment.userData.ground.visible = viewer3d.camera.matrixWorld.elements[13] >= sceneEnvironment.userData.surfaceY;
+    // Follow translation only: the sky's orientation remains fixed in the world.
+    sceneEnvironment.userData.sky.position.setFromMatrixPosition(viewer3d.camera.matrixWorld);
+}
+
+function createWorldSky(source, mode, surfaceY) {
+    const group = new THREE.Group();
+    const makeMaterial = (color, fog = false) => {
+        const material = source.material.clone();
+        material.map = material.emissiveMap = null;
+        material.color.set(0x000000);
+        material.emissive.set(color);
+        material.transparent = false;
+        material.opacity = 1;
+        material.fog = fog;
+        material.side = THREE.FrontSide;
+        return material;
+    };
+    const makeMesh = (geometry, material) => {
+        const mesh = source.clone(false);
+        mesh.geometry = geometry;
+        mesh.material = material;
+        mesh.position.set(0, 0, 0);
+        mesh.rotation.set(0, 0, 0);
+        mesh.scale.set(1, 1, 1);
+        mesh.raycast = () => {};
+        return mesh;
+    };
+    const canvas = document.createElement('canvas');
+    canvas.width = 16; canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    const gradient = ctx.createLinearGradient(0, 0, 0, 256);
+    gradient.addColorStop(0, mode === 'overworld' ? '#367bd1' : '#200c12');
+    gradient.addColorStop(0.65, mode === 'overworld' ? '#68a9e7' : '#451b22');
+    gradient.addColorStop(0.92, mode === 'overworld' ? '#b5d8f5' : '#74352f');
+    gradient.addColorStop(1, mode === 'overworld' ? '#b5d8f5' : '#74352f');
+    ctx.fillStyle = gradient; ctx.fillRect(0, 0, 16, 512);
+    const texture = new source.material.map.constructor(canvas);
+    texture.colorSpace = source.material.map.colorSpace;
+    texture.magFilter = texture.minFilter = THREE.LinearFilter;
+    texture.generateMipmaps = false;
+    texture.needsUpdate = true;
+    const skyMaterial = makeMaterial(0xffffff);
+    skyMaterial.map = skyMaterial.emissiveMap = texture;
+    skyMaterial.side = THREE.BackSide;
+    skyMaterial.depthWrite = false;
+    const sky = makeMesh(new THREE.SphereGeometry(Math.min(800, viewer3d.camera.far * 0.8), 48, 24), skyMaterial);
+    sky.renderOrder = -1000;
+    sky.frustumCulled = false;
+    group.add(sky);
     if (mode === 'overworld') {
-        x.fillStyle = colors[2];
-        [[48,45,84,12],[155,81,110,15],[336,40,98,13],[390,115,68,10],[20,155,120,14]].forEach(([px,py,w,h]) => { x.fillRect(px,py,w,h); x.fillRect(px+12,py-h/2,w*.62,h*2); });
+        const cloudTop = makeMaterial('#ffffff');
+        const cloudSide = makeMaterial('#dbe4ed');
+        const cloudBottom = makeMaterial('#bbcddd');
+        // Fixed world-space cloud banks with real depth and parallax.
+        for (let i = 0; i < 12; i++) {
+            const angle = i * Math.PI * 2 / 12;
+            const distance = 180 + (i % 3) * 65;
+            for (let j = 0; j < 3; j++) {
+                const cloud = makeMesh(new THREE.BoxGeometry(36 + ((i + j) % 3) * 12, 6, 18 + (j % 2) * 12),
+                    [cloudSide, cloudSide, cloudTop, cloudBottom, cloudSide, cloudSide]);
+                cloud.position.set(Math.cos(angle) * distance + j * 23, surfaceY + 60 + (i % 3) * 10, Math.sin(angle) * distance + (j % 2) * 14);
+                group.add(cloud);
+                // Raised, overlapping lobes give the cloud a fuller blocky profile.
+                const puff = makeMesh(new THREE.BoxGeometry(22 + ((i + j) % 3) * 8, 7 + j % 2 * 3, 16 + j % 2 * 8),
+                    [cloudSide, cloudSide, cloudTop, cloudBottom, cloudSide, cloudSide]);
+                puff.position.copy(cloud.position);
+                puff.position.y += 5;
+                puff.position.z += 2;
+                group.add(puff);
+            }
+        }
     } else {
-        x.globalAlpha = .28; x.fillStyle = colors[2];
-        for (let i = 0; i < 45; i++) x.fillRect((i * 73) % 512, (i * 47) % 250, 3 + (i % 5), 3 + (i % 3));
+        const ember = makeMaterial('#f08038', true);
+        // Embers remain fixed in world space as the camera rotates.
+        for (let i = 0; i < 22; i++) {
+            const angle = i * Math.PI * 2 / 22;
+            const spark = makeMesh(new THREE.BoxGeometry(0.7, 1.3, 0.7), ember);
+            spark.position.set(Math.cos(angle + 0.3) * 130, surfaceY + 25 + (i * 13 % 80), Math.sin(angle + 0.3) * 130);
+            group.add(spark);
+        }
     }
-    return `url(${c.toDataURL('image/png')})`;
+    return { group, sky };
 }
 
 function updateSceneEnvironment(mode) {
     if (!viewer3d?.scene) return;
-    if (sceneEnvironment) { viewer3d.scene.remove(sceneEnvironment); sceneEnvironment.traverse(o => { o.geometry?.dispose?.(); o.material?.map?.dispose?.(); o.material?.dispose?.(); }); sceneEnvironment = null; }
-    if (!['overworld', 'nether', 'end'].includes(mode)) return;
-    const kind = mode === 'overworld' ? 'grass' : mode === 'nether' ? 'netherrack' : 'endstone';
-    const group = new THREE.Group(); group.name = 'preview-scene-ground';
-    const bounds = new THREE.Box3().setFromObject(viewer3d.playerObject);
-    const groundY = Number.isFinite(bounds.min.y) ? bounds.min.y - .08 : -16;
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(220, 220), new THREE.MeshBasicMaterial({ map: makePixelTexture(kind), side: THREE.DoubleSide }));
-    floor.rotation.x = -Math.PI / 2; floor.position.y = groundY; group.add(floor);
-    // A small irregular block rim makes the floor read as real cubic terrain.
-    const blockMaterial = new THREE.MeshBasicMaterial({ map: makePixelTexture(kind) });
-    for (let i = 0; i < 18; i++) {
-        const block = new THREE.Mesh(new THREE.BoxGeometry(3, 3, 3), blockMaterial.clone());
-        block.position.set(((i * 19) % 40) - 20, groundY + 1.5, -18 - ((i * 11) % 10)); group.add(block);
+    if (sceneEnvironment) {
+        viewer3d.scene.remove(sceneEnvironment);
+        const materials = new Set(), textures = new Set();
+        sceneEnvironment.traverse(object => {
+            object.geometry?.dispose();
+            for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+                if (!material) continue;
+                materials.add(material);
+                if (material.map) textures.add(material.map);
+            }
+        });
+        textures.forEach(texture => { texture.userData.disposed = true; texture.dispose(); });
+        materials.forEach(material => material.dispose());
+        sceneEnvironment = null;
     }
-    sceneEnvironment = group; viewer3d.scene.add(group);
+    if (!['overworld', 'nether'].includes(mode)) return;
+    const skin = viewer3d.playerObject.skin;
+    let source;
+    skin.head.innerLayer.traverse(object => {
+        if (!source && object.isMesh && object.material?.map) source = object;
+    });
+    if (!source) return;
+    // A Minecraft block is 16 model units wide (the standing player is 32).
+    const blocks = 64, blockSize = 16, width = blocks * blockSize;
+    const baseMaterial = source.material;
+    const materialFor = (name, rx, ry, tint) => {
+        const material = baseMaterial.clone();
+        material.map = makeSceneTexture(name, baseMaterial.map, rx, ry, tint);
+        material.emissiveMap = material.map;
+        material.color.set(0x000000);
+        material.emissive.set(0xffffff);
+        material.opacity = 1;
+        material.transparent = false;
+        material.depthWrite = true;
+        material.side = THREE.FrontSide;
+        material.fog = true;
+        return material;
+    };
+    const top = materialFor(mode === 'overworld' ? 'grass_block_top' : 'netherrack', blocks, blocks, mode === 'overworld' ? '#91bd59' : null);
+    const side = materialFor(mode === 'overworld' ? 'grass_block_side' : 'netherrack', blocks, 1);
+    const bottom = materialFor(mode === 'overworld' ? 'dirt' : 'netherrack', blocks, blocks);
+    const ground = source.clone(false);
+    ground.geometry = new THREE.BoxGeometry(width, blockSize, width);
+    ground.material = [side, side, top, bottom, side, side];
+    ground.position.set(0, 0, 0);
+    ground.rotation.set(0, 0, 0);
+    ground.scale.set(1, 1, 1);
+    ground.raycast = () => {};
+    // Derive the standing foot height without changing the user's current pose.
+    const leg = skin.leftLeg;
+    const localFoot = new THREE.Vector3(0, -12, 0);
+    const standingLeg = leg.matrix.clone();
+    standingLeg.compose(leg.position, new THREE.Quaternion(), leg.scale);
+    leg.parent.updateWorldMatrix(true, false);
+    localFoot.applyMatrix4(standingLeg).applyMatrix4(leg.parent.matrixWorld);
+    ground.position.y = localFoot.y - blockSize / 2 - 0.02;
+    ground.position.x = localFoot.x;
+    ground.position.z = localFoot.z;
+    const group = new THREE.Group();
+    group.name = 'preview-scene-ground';
+    group.userData.surfaceY = ground.position.y + blockSize / 2;
+    group.userData.ground = ground;
+    group.add(ground);
+    const atmosphere = createWorldSky(source, mode, group.userData.surfaceY);
+    group.add(atmosphere.group);
+    group.userData.sky = atmosphere.sky;
+    sceneEnvironment = group;
+    viewer3d.scene.add(group);
+    updateSceneGroundVisibility();
 }
 
 function applyViewerScene(mode = viewerSceneMode) {
-    viewerSceneMode = mode === 'transparent' ? 'transparent' : 'editor';
+    viewerSceneMode = ['editor', 'transparent', 'overworld', 'nether'].includes(mode) ? mode : 'editor';
+    document.getElementById('viewer-scene-select').value = viewerSceneMode;
     if (!viewer3d) return;
-    // skinview3d renders to an alpha canvas. Applying the scene as the canvas
-    // background makes every browser display it consistently, including when
-    // the viewer internally resets Scene.background during a skin reload.
-    canvas3d.style.background = viewerSceneMode === 'transparent' ? 'transparent' : bgPicker.value;
+    canvas3d.style.background = makeSkyImage(viewerSceneMode);
+    canvas3d.style.backgroundSize = 'cover';
+    canvas3d.style.backgroundPosition = 'center';
     viewer3d.scene.background = null;
-    viewer3d.scene.fog = null;
+    viewer3d.scene.fog = ['overworld', 'nether'].includes(viewerSceneMode)
+        ? new THREE.Fog(viewerSceneMode === 'overworld' ? '#b5d8f5' : '#74352f', 160, 440)
+        : null;
     viewer3d.renderer?.setClearColor(0x000000, 0);
-    updateSceneEnvironment('');
+    updateSceneEnvironment(viewerSceneMode);
     if (typeof schedulePreferencesSave === 'function') schedulePreferencesSave();
 }
+
+let viewerExploded = false;
+
+function applyExplodedView(exploded, capturePositions = false) {
+    const skin = viewer3d?.playerObject?.skin;
+    if (!skin) return;
+    // Keep feet on the ground; lift the torso and head to open vertical gaps.
+    // Move whole parts, including both texture layers and their paint targets.
+    const offsets = { head: [0, 10, 0], body: [0, 4, 0],
+        leftArm: [4, 4, 0], rightArm: [-4, 4, 0],
+        leftLeg: [2, 0, 0], rightLeg: [-2, 0, 0] };
+    for (const [name, offset] of Object.entries(offsets)) {
+        const part = skin[name];
+        if (!part) continue;
+        if (capturePositions || !part.userData.assembledPosition)
+            part.userData.assembledPosition = part.position.clone();
+        part.position.copy(part.userData.assembledPosition);
+        if (exploded) {
+            part.position.x += offset[0];
+            part.position.y += offset[1];
+            part.position.z += offset[2];
+        }
+    }
+    viewer3d.playerObject.updateMatrixWorld(true);
+}
+
+document.getElementById('btn-3d-explode').addEventListener('click', () => {
+    if (!viewer3d || is2DMode) return;
+    viewerExploded = !viewerExploded;
+    applyExplodedView(viewerExploded);
+    const button = document.getElementById('btn-3d-explode');
+    button.setAttribute('aria-pressed', String(viewerExploded));
+    button.title = viewerExploded ? 'Assemble model' : 'Explode model';
+    button.setAttribute('aria-label', button.title);
+    centerCameraOnVisibleParts();
+    viewer3d.render();
+});
 
 function setPreviewPose(mode = viewerPoseMode, phase = 0) {
     viewerPoseMode = mode;
@@ -1338,6 +1531,7 @@ async function take3DScreenshot() {
     if (!viewer3d || !viewer3d.renderer) return;
     const renderer = viewer3d.renderer;
     const originalBackground = viewer3d.scene.background;
+    const originalFog = viewer3d.scene.fog;
     const originalEnvironmentVisible = sceneEnvironment?.visible;
     const originalClearColor = new THREE.Color();
     renderer.getClearColor(originalClearColor);
@@ -1346,6 +1540,7 @@ async function take3DScreenshot() {
     try {
         // Sadece dış ortamı saydamlaştırır; skin dokusu ve 3D katmanları aynen kalır.
         viewer3d.scene.background = null;
+        viewer3d.scene.fog = null;
         if (sceneEnvironment) sceneEnvironment.visible = false;
         renderer.setClearColor(0x000000, 0);
         if (typeof viewer3d.render === 'function') viewer3d.render();
@@ -1365,6 +1560,7 @@ async function take3DScreenshot() {
         alert('The 3D screenshot could not be created.');
     } finally {
         viewer3d.scene.background = originalBackground;
+        viewer3d.scene.fog = originalFog;
         if (sceneEnvironment) sceneEnvironment.visible = originalEnvironmentVisible !== false;
         renderer.setClearColor(originalClearColor, originalClearAlpha);
         if (typeof viewer3d.render === 'function') viewer3d.render();
@@ -1401,7 +1597,6 @@ document.getElementById('btn-screenshot-copy').addEventListener('click', async (
 canvas3d.addEventListener('wheel', (e) => { if (isRotating) { e.preventDefault(); viewer3d.zoom *= (e.deltaY > 0 ? 0.9 : 1.1); } }, { passive: false });
 canvas3d.addEventListener('contextmenu', (e) => e.preventDefault());
 bgPicker.addEventListener('input', (e) => {
-    if(viewer3d) viewer3d.scene.background = new THREE.Color(e.target.value);
     if (viewerSceneMode === 'editor') applyViewerScene('editor');
     if (typeof schedulePreferencesSave === 'function') schedulePreferencesSave();
 });
@@ -1428,6 +1623,8 @@ function loadDefaultTexture(modelType) {
 function applyLiveTexture(modelType) {
     draw2DGuide(); 
     if (!viewer3d) { if (!init3DViewer()) return Promise.reject(new Error("The 3D viewer is not ready.")); }
+    // Undo display offsets before loading another model; never accumulate them.
+    applyExplodedView(false);
     return viewer3d.loadSkin(canvas2d.toDataURL(), { model: modelType }).then(() => {
         activeTextures = []; 
         viewer3d.scene.children.forEach(child => { if (child.isLight) child.visible = false; });
@@ -1449,6 +1646,10 @@ function applyLiveTexture(modelType) {
         });
         updateTexture();
         const sk = viewer3d.playerObject.skin;
+        // skinview3d offsets the legs along Z by default. Match the torso's
+        // depth so their front/back faces line up in the standing pose.
+        sk.leftLeg.position.z = sk.body.position.z;
+        sk.rightLeg.position.z = sk.body.position.z;
         if (sk.rightArm.userData.origY === undefined) { sk.rightArm.userData.origY = sk.rightArm.position.y; sk.leftArm.userData.origY = sk.leftArm.position.y; }
         if (modelType === 'slim') {
             sk.rightArm.position.y = sk.rightArm.userData.origY - 0.5; sk.leftArm.position.y = sk.leftArm.userData.origY - 0.5;
@@ -1457,6 +1658,7 @@ function applyLiveTexture(modelType) {
             sk.rightArm.position.y = sk.rightArm.userData.origY; sk.leftArm.position.y = sk.leftArm.userData.origY;
             if (sk.rightArm.outerLayer) sk.rightArm.outerLayer.position.y = 0; if (sk.leftArm.outerLayer) sk.leftArm.outerLayer.position.y = 0;
         }
+        applyExplodedView(viewerExploded, true);
         enforceUIVisibilityState(); updateTexture();
         updateOrientationCube();
         applyViewerScene(viewerSceneMode);
@@ -1493,11 +1695,35 @@ function centerCameraOnVisibleParts() {
     viewer3d.controls.update();
 }
 
-document.querySelectorAll('.body-map .part').forEach(btn => { btn.addEventListener('click', function() { this.classList.toggle('off'); enforceUIVisibilityState(); if (gridToggle.checked) updateTexture(); }); });
+function handleBodyPartClick(event) {
+    if (event.button !== 0) return;
+    if (event.shiftKey || event.ctrlKey) {
+        event.preventDefault();
+        document.querySelectorAll('.body-map .part').forEach(part => {
+            part.classList.toggle('off', part !== this);
+        });
+    } else {
+        this.classList.toggle('off');
+    }
+    enforceUIVisibilityState();
+    if (gridToggle.checked) updateTexture();
+}
+
+document.querySelectorAll('.body-map .part').forEach(btn => {
+    btn.addEventListener('click', handleBodyPartClick);
+    btn.title = 'Toggle part · Shift/Ctrl + click to show only this part';
+});
 document.getElementById('toggle-inner-all').addEventListener('change', e => { const isChecked = e.target.checked; document.querySelectorAll('.inner-map .part').forEach(btn => { if(isChecked) btn.classList.remove('off'); else btn.classList.add('off'); }); enforceUIVisibilityState(); });
 document.getElementById('toggle-outer-all').addEventListener('change', e => { const isChecked = e.target.checked; document.querySelectorAll('.outer-map .part').forEach(btn => { if(isChecked) btn.classList.remove('off'); else btn.classList.add('off'); }); enforceUIVisibilityState(); if (gridToggle.checked) updateTexture(); });
 
 function enforceUIVisibilityState() {
+    for (const [map, toggleId] of [['.inner-map', 'toggle-inner-all'], ['.outer-map', 'toggle-outer-all']]) {
+        const parts = Array.from(document.querySelectorAll(map + ' .part'));
+        const visibleCount = parts.filter(part => !part.classList.contains('off')).length;
+        const toggle = document.getElementById(toggleId);
+        toggle.checked = visibleCount === parts.length;
+        toggle.indeterminate = visibleCount > 0 && visibleCount < parts.length;
+    }
     document.querySelectorAll('.body-map .part').forEach(btn => {
         const layer = btn.getAttribute('data-layer'); const part = btn.getAttribute('data-part'); const isVisible = !btn.classList.contains('off');
         if(viewer3d.playerObject.skin[part] && viewer3d.playerObject.skin[part][layer]) { viewer3d.playerObject.skin[part][layer].visible = isVisible; }
@@ -1814,6 +2040,127 @@ function getColorPickerIntersect(e) {
 
 let last3DObject = null;
 let last3DNormal = null;
+
+// Shared with square pencil painting: even sizes must use the same rounding.
+function forEachPencilPixel(cx, cy, size, visit) {
+    const startX = Math.round(cx - (size - 1) / 2);
+    const startY = Math.round(cy - (size - 1) / 2);
+    for (let y = Math.max(0, startY); y < Math.min(SKIN_RES, startY + size); y++) {
+        for (let x = Math.max(0, startX); x < Math.min(SKIN_RES, startX + size); x++) {
+            if (!hasSelection || selectionMask[y * SKIN_RES + x]) visit(x, y);
+        }
+    }
+}
+
+// Preview meshes live outside playerObject: raycasts, texture updates and
+// model traversal can never hit or recursively duplicate these helpers.
+const pencilPreview = { pointer: null, group: null, meshes: new Map(), key: '' };
+for (const eventName of ['mousemove', 'mousedown']) canvas3d.addEventListener(eventName, e => {
+    pencilPreview.pointer = { clientX: e.clientX, clientY: e.clientY, altKey: e.altKey, shiftKey: e.shiftKey, buttons: e.buttons };
+});
+window.addEventListener('mouseup', e => {
+    if (pencilPreview.pointer) pencilPreview.pointer.buttons = e.buttons;
+});
+for (const eventName of ['keydown', 'keyup']) window.addEventListener(eventName, e => {
+    if (pencilPreview.pointer) {
+        pencilPreview.pointer.altKey = e.altKey;
+        pencilPreview.pointer.shiftKey = e.shiftKey;
+    }
+});
+canvas3d.addEventListener('mouseleave', () => { pencilPreview.pointer = null; });
+window.addEventListener('blur', () => { pencilPreview.pointer = null; });
+
+function updatePencilPreview() {
+    const p = pencilPreview;
+    if (p.group) p.group.visible = false;
+    if (!viewer3d?.playerObject?.skin || !p.pointer || is2DMode ||
+        activeTool !== 'brush' || isRoundBrushMode || isBucketMode ||
+        isCopyModeActive || isRotating || isPanning || p.pointer.altKey || p.pointer.shiftKey) return;
+    // Also hide when a floating window covers the stationary pointer.
+    if (document.elementFromPoint(p.pointer.clientX, p.pointer.clientY) !== canvas3d) return;
+    viewer3d.playerObject.updateMatrixWorld(true);
+    viewer3d.camera.updateMatrixWorld();
+    const hit = getIntersects(p.pointer)[0];
+    if (!hit?.uv) return;
+    if (!p.group) {
+        p.canvas = document.createElement('canvas');
+        p.ctx = p.canvas.getContext('2d');
+        // Use the viewer's own Three.js classes. The page also has an older
+        // Three.js build; mixing its materials into skinview3d stops rendering.
+        const sourceMaterial = Array.isArray(hit.object.material) ? hit.object.material[0] : hit.object.material;
+        // Texture.clone() shares its Source with the original texture. Changing
+        // its image would replace the skin's image as well. Allocate a separate
+        // texture (and Source) using the viewer's own texture constructor.
+        p.texture = new sourceMaterial.map.constructor(p.canvas);
+        p.texture.flipY = sourceMaterial.map.flipY;
+        p.texture.colorSpace = sourceMaterial.map.colorSpace;
+        p.texture.magFilter = p.texture.minFilter = THREE.NearestFilter;
+        p.texture.generateMipmaps = false;
+        p.material = sourceMaterial.clone();
+        p.material.map = p.texture;
+        p.material.emissiveMap = p.texture;
+        p.material.color.set(0x000000);
+        p.material.emissive.set(0xffffff);
+        Object.assign(p.material, {
+            transparent: true, opacity: 1, alphaTest: 0.01,
+            depthWrite: false, depthTest: true, side: THREE.FrontSide,
+            polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
+        });
+        p.group = new THREE.Group();
+        p.group.name = 'pencil-pixel-preview';
+        viewer3d.scene.add(p.group);
+    }
+    const x = Math.max(0, Math.min(SKIN_RES - 1, Math.floor(hit.uv.x * SKIN_RES)));
+    const y = Math.max(0, Math.min(SKIN_RES - 1, Math.floor((1 - hit.uv.y) * SKIN_RES)));
+    const pixels = [];
+    const collect = (px, py) => pixels.push(py * SKIN_RES + px);
+    forEachPencilPixel(x, y, pencilSize, collect);
+    const mirrored = typeof getMirroredPixel === 'function' ? getMirroredPixel(x, y) : null;
+    if (mirrored) forEachPencilPixel(mirrored[0], mirrored[1], pencilSize, collect);
+    const rgb = p.pointer.buttons === 2
+        ? hslToRgbArr(secondaryColor.h / 360, secondaryColor.s / 100, secondaryColor.l / 100)
+        : [currentR, currentG, currentB];
+    const previewColor = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+    const key = SKIN_RES + ':' + previewColor + ':' + pixels.join(',');
+    if (key !== p.key) {
+        p.key = key;
+        if (p.canvas.width !== SKIN_RES) p.canvas.width = p.canvas.height = SKIN_RES;
+        p.ctx.clearRect(0, 0, SKIN_RES, SKIN_RES);
+        p.ctx.fillStyle = previewColor;
+        for (const pixel of pixels) p.ctx.fillRect(pixel % SKIN_RES, Math.floor(pixel / SKIN_RES), 1, 1);
+        p.texture.needsUpdate = true;
+    }
+    const sources = new Set();
+    viewer3d.playerObject.skin.traverse(source => {
+        if (!source.isMesh || !source.geometry?.attributes?.uv) return;
+        sources.add(source);
+        let overlay = p.meshes.get(source);
+        if (!overlay) {
+            overlay = source.clone(false);
+            overlay.material = p.material;
+            overlay.matrixAutoUpdate = false;
+            overlay.renderOrder = 100;
+            overlay.raycast = () => {};
+            p.meshes.set(source, overlay);
+            p.group.add(overlay);
+        }
+        overlay.geometry = source.geometry;
+        overlay.matrix.copy(source.matrixWorld);
+        overlay.visible = isMeshVisible(source);
+    });
+    for (const [source, overlay] of p.meshes) {
+        if (!sources.has(source)) { p.group.remove(overlay); p.meshes.delete(source); }
+    }
+    p.group.visible = pixels.length > 0;
+}
+
+function animatePencilPreview() {
+    // The viewer owns rendering; this loop only updates the lightweight overlay.
+    updateSceneGroundVisibility();
+    updatePencilPreview();
+    requestAnimationFrame(animatePencilPreview);
+}
+requestAnimationFrame(animatePencilPreview);
 
 function drawOn3D(intersects, e = null) {
     if (!intersects || intersects.length === 0) return;

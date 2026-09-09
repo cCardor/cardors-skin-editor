@@ -79,6 +79,8 @@
                 <div class="dropdown-item dropdown-scene-control"><span>3D Scene</span><select id="viewer-scene-select" aria-label="3D Scene">
                     <option value="editor">Editor</option>
                     <option value="transparent">Transparent</option>
+                    <option value="overworld">Overworld</option>
+                    <option value="nether">Nether</option>
                 </select></div>
                 <div class="dropdown-separator"></div>
                 <div class="dropdown-item" id="menu-view-grid"><span class="check-grid" style="margin-right: 8px; font-weight: bold; width: 12px; color: #38ef7d; opacity: 0;">✓</span> Toggle Grid</div>
@@ -389,6 +391,9 @@
             <label class="viewer-animation-toggle"><input type="checkbox" id="viewer-animation-toggle"> Animate</label>
             <button type="button" id="btn-viewer-pose-reset" title="Reset pose" aria-label="Reset pose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg></button>
         </div>
+        <button id="btn-3d-explode" type="button" title="Explode model" aria-label="Explode model" aria-pressed="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M8 8 3 3m0 4V3h4m9 5 5-5m-4 0h4v4M8 16l-5 5m0-4v4h4m9-5 5 5m-4 0h4v-4"/></svg>
+        </button>
         <button id="btn-3d-screenshot" type="button" title="Take a 3D skin screenshot" aria-label="Take a 3D skin screenshot">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M4 7h3l1.5-2h7L17 7h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z" />

@@ -247,7 +247,7 @@ async function restorePersistentPreferences() {
     restorePanelStates(preferences.panels);
     setToolSettingsCollapsed(preferences.toolSettingsCollapsed === true);
     if (preferences.viewer && typeof preferences.viewer === 'object') {
-        const scene = preferences.viewer.scene === 'transparent' ? 'transparent' : 'editor';
+        const scene = ['editor', 'transparent', 'overworld', 'nether'].includes(preferences.viewer.scene) ? preferences.viewer.scene : 'editor';
         const pose = preferences.viewer.animate === true ? 'walking' : 'standing';
         if (typeof applyViewerScene === 'function') applyViewerScene(scene);
         if (typeof setPreviewPose === 'function') setPreviewPose(pose);
@@ -1042,22 +1042,16 @@ function drawSingleDab(ctx, cx, cy, r, g, b, a, isEraser) {
         // Pencil and square eraser dabs check the mask per pixel rather than
         // clipping the whole stroke, so a stroke may enter a selection from outside.
         const toolSize = isEraser ? eraserSize : pencilSize;
-        const startX = Math.round(cx - (toolSize - 1) / 2);
-        const startY = Math.round(cy - (toolSize - 1) / 2);
-        for (let y = startY; y < startY + toolSize; y++) {
-            for (let x = startX; x < startX + toolSize; x++) {
-                if (x < 0 || x >= SKIN_RES || y < 0 || y >= SKIN_RES) continue;
-                if (hasSelection && !selectionMask[y * SKIN_RES + x]) continue;
+        forEachPencilPixel(cx, cy, toolSize, (x, y) => {
                 const pixelKey = `${x},${y}`;
-                if (strokePixels.has(pixelKey)) continue;
+                if (strokePixels.has(pixelKey)) return;
                 strokePixels.add(pixelKey);
                 if (isEraser) ctx.clearRect(x, y, 1, 1);
                 else {
                     ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a})`;
                     ctx.fillRect(x, y, 1, 1);
                 }
-            }
-        }
+        });
         return;
     }
 
@@ -1857,6 +1851,7 @@ btn3D.addEventListener('click', () => {
     if (typeof updateOrientationCube === 'function') updateOrientationCube();
     if (typeof updateTexture === 'function') updateTexture();
     document.getElementById('btn-3d-screenshot').style.display = 'flex';
+    document.getElementById('btn-3d-explode').style.display = 'flex';
     document.getElementById('btn-share-work-quick').style.display = 'flex';
     document.getElementById('viewer-customization').hidden = false;
     document.getElementById('btn-action-mirror').style.display = 'flex';
@@ -1872,6 +1867,7 @@ btn2D.addEventListener('click', () => {
     document.getElementById('view-orientation-cube').style.display = 'none';
     if (typeof updateTexture === 'function') updateTexture();
     document.getElementById('btn-3d-screenshot').style.display = 'none';
+    document.getElementById('btn-3d-explode').style.display = 'none';
     document.getElementById('viewer-customization').hidden = true;
     document.getElementById('btn-action-mirror').style.display = 'none';
     document.getElementById('btn-action-filler').style.display = 'none';
@@ -1927,7 +1923,7 @@ function beginRectangleSelection(e) {
     const { px, py } = get2DCoords(e, false);
     isDrawing2D = true;
     if (e.button === 2 && e.ctrlKey) rectSelMode = 'xor';
-    else if (e.button === 2) rectSelMode = 'subtract';
+    else if (e.button === 2 || (e.button === 0 && e.altKey)) rectSelMode = 'subtract';
     else rectSelMode = 'add';
 
     const isInsideCanvas = px >= 0 && px < SKIN_RES && py >= 0 && py < SKIN_RES;
