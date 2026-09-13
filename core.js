@@ -2102,7 +2102,7 @@ function updatePencilPreview() {
         p.material.color.set(0x000000);
         p.material.emissive.set(0xffffff);
         Object.assign(p.material, {
-            transparent: true, opacity: 1, alphaTest: 0.01,
+            transparent: true, opacity: 1, alphaTest: 0.000001,
             depthWrite: false, depthTest: true, side: THREE.FrontSide,
             polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
         });
@@ -2121,6 +2121,11 @@ function updatePencilPreview() {
         ? hslToRgbArr(secondaryColor.h / 360, secondaryColor.s / 100, secondaryColor.l / 100)
         : [currentR, currentG, currentB];
     const previewColor = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+    // Keep the mask opaque and apply alpha once on the material. This also
+    // updates a stationary preview and avoids stacking alpha on mirrored pixels.
+    const previewAlpha = Math.max(0, Math.min(1,
+        p.pointer.buttons === 2 ? secondaryColor.a : currentA));
+    p.material.opacity = previewAlpha;
     const key = SKIN_RES + ':' + previewColor + ':' + pixels.join(',');
     if (key !== p.key) {
         p.key = key;
@@ -2151,7 +2156,7 @@ function updatePencilPreview() {
     for (const [source, overlay] of p.meshes) {
         if (!sources.has(source)) { p.group.remove(overlay); p.meshes.delete(source); }
     }
-    p.group.visible = pixels.length > 0;
+    p.group.visible = pixels.length > 0 && previewAlpha > 0;
 }
 
 function animatePencilPreview() {

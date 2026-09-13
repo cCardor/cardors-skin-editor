@@ -3000,6 +3000,11 @@ function processHueSaturation() {
     const hVal = parseInt(document.getElementById('adj-hue').value) / 360;
     const sVal = parseInt(document.getElementById('adj-sat').value) / 100;
     const lVal = parseInt(document.getElementById('adj-light').value) / 100;
+    // Paint.NET documents an amplified saturation scale above 100% and
+    // RGB interpolation towards black/white, rather than modifying HSL L.
+    // https://paint.net/doc/api/preview/api/PaintDotNet.Effects.Gpu.PdnHueSaturationLightnessEffect.Props.html
+    const saturationFactor = sVal > 1 ? 1 + (sVal - 1) * 3 : sVal;
+    const saturationScale = Math.floor(saturationFactor * 1024 + 1e-8);
 
     const imgData = new ImageData(new Uint8ClampedArray(originalStateData.data), SKIN_RES, SKIN_RES);
     const data = imgData.data;
@@ -3008,26 +3013,25 @@ function processHueSaturation() {
         if (data[i + 3] === 0) continue;
         if (hasSelection && !selectionMask[i / 4]) continue;
 
-        let hsl = rgbToHslObj(data[i], data[i + 1], data[i + 2]);
-
-        hsl.h += hVal;
-        if (hsl.h < 0) hsl.h += 1;
-        if (hsl.h > 1) hsl.h -= 1;
-
-        hsl.s *= sVal;
-        hsl.s = Math.max(0, Math.min(1, hsl.s));
-
-        if (lVal > 0) {
-            hsl.l += lVal * (1 - hsl.l);
-        } else {
-            hsl.l += lVal * hsl.l;
+        // Paint.NET's classic adjustment scales RGB distance from luminance,
+        // not HSL saturation (which already equals 1 for e.g. dark red).
+        // Reference: OpenPDN src/Core/UnaryPixelOps.cs and ColorBgra.cs.
+        const intensity = (19595 * data[i] + 38470 * data[i + 1] + 7471 * data[i + 2]) >> 16;
+        let rgb = [data[i], data[i + 1], data[i + 2]].map(value =>
+            Math.max(0, Math.min(255,
+                (intensity * 1024 + (value - intensity) * saturationScale) >> 10)));
+        // Rotate hue after saturation. A hue-only HSL rotation preserves the
+        // RGB minimum/maximum, just like a hue-only HSV rotation.
+        if (hVal !== 0) {
+            const hsl = rgbToHslObj(...rgb);
+            rgb = hslToRgbArr((hsl.h + hVal + 1) % 1, hsl.s, hsl.l);
         }
-        hsl.l = Math.max(0, Math.min(1, hsl.l));
-
-        let rgb = hslToRgbArr(hsl.h, hsl.s, hsl.l);
-        data[i] = rgb[0];
-        data[i + 1] = rgb[1];
-        data[i + 2] = rgb[2];
+        for (let channel = 0; channel < 3; channel++) {
+            const value = rgb[channel];
+            data[i + channel] = Math.round(lVal < 0
+                ? value * (1 + lVal)
+                : value + (255 - value) * lVal);
+        }
     }
 
     const tempCanvas = document.createElement('canvas');
