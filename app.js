@@ -216,6 +216,7 @@ async function restorePersistentPreferences() {
             if (Number.isFinite(hueSat.hue)) lastAdjustmentValues.hueSat.hue = Math.max(-180, Math.min(180, Math.round(hueSat.hue)));
             if (Number.isFinite(hueSat.sat)) lastAdjustmentValues.hueSat.sat = Math.max(0, Math.min(200, Math.round(hueSat.sat)));
             if (Number.isFinite(hueSat.light)) lastAdjustmentValues.hueSat.light = Math.max(-100, Math.min(100, Math.round(hueSat.light)));
+            if (typeof hueSat.colorize === 'boolean') lastAdjustmentValues.hueSat.colorize = hueSat.colorize;
         }
         if (brightnessContrast && typeof brightnessContrast === 'object') {
             if (Number.isFinite(brightnessContrast.bri)) lastAdjustmentValues.brightnessContrast.bri = Math.max(-100, Math.min(100, Math.round(brightnessContrast.bri)));
@@ -512,7 +513,7 @@ let transformData = {
 let clipboardData = null;
 let originalStateData = null;
 const lastAdjustmentValues = {
-    hueSat: { hue: 0, sat: 100, light: 0 },
+    hueSat: { hue: 0, sat: 100, light: 0, colorize: false },
     brightnessContrast: { bri: 0, con: 0 }
 };
 
@@ -1426,7 +1427,7 @@ function floodFill(startCoords, e = null) {
     const fillRgba = isEraser ? [0,0,0,0] : [fillR, fillG, fillB, Math.round(fillA * 255)];
     const a_src = isEraser ? 0 : fillA; 
     const isSlim = currentModel === 'slim';
-    const isGlobalFill = e && e.ctrlKey && e.shiftKey;
+    const isGlobalFill = e && usesPrimaryModifier(e) && e.shiftKey;
 
     startCoords.forEach(([startX, startY]) => {
         // YENİ: selectionMask yerine effectiveMask kullanıldı
@@ -1748,7 +1749,7 @@ document.addEventListener('keydown', (e) => {
         return;
     }
 
-    if (e.ctrlKey && e.key.toLowerCase() === 'a' && is2DMode) {
+    if (usesPrimaryModifier(e) && e.key.toLowerCase() === 'a' && is2DMode) {
         e.preventDefault();
         if (transformMode) applyTransform();
         setTool('rect_select');
@@ -1760,16 +1761,19 @@ document.addEventListener('keydown', (e) => {
         return;
     }
 
-    if ((e.ctrlKey && e.key.toLowerCase() === 'd') || (e.key === 'Escape' && hasSelection)) {
+    if ((usesPrimaryModifier(e) && e.key.toLowerCase() === 'd') || (e.key === 'Escape' && hasSelection)) {
         e.preventDefault();
         if (transformMode) applyTransform();
         selectionMask.fill(0); checkHasSelection(); updateSelectionVisuals(); saveHistory(); return;
     }
 
-    if (e.ctrlKey && e.key.toLowerCase() === 'c') { e.preventDefault(); copySelectionToClipboard(); return; }
-    if (e.ctrlKey && e.key.toLowerCase() === 'x') { e.preventDefault(); cutSelectionToClipboard(); return; }
+    if (usesPrimaryModifier(e) && e.key.toLowerCase() === 'c') { e.preventDefault(); copySelectionToClipboard(); return; }
+    if (usesPrimaryModifier(e) && e.key.toLowerCase() === 'x') { e.preventDefault(); cutSelectionToClipboard(); return; }
 
-    if (e.key === 'Delete') {
+    // macOS keyboards label the forward-delete action as ⌫ (Backspace).
+    // Inputs return above, so their normal text editing is unaffected.
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
         if (transformMode) {
             transformMode = false;
             document.getElementById('transform-toolbar').style.display = 'none';
@@ -1811,8 +1815,12 @@ document.addEventListener('keydown', (e) => {
         customizingShortcutFor = null; return;
     }
 
-    if (e.ctrlKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
-    if (e.ctrlKey && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
+    if (usesPrimaryModifier(e) && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
+    if (usesPrimaryModifier(e) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return; }
+
+    // Do not run a single-key tool shortcut while the user is using a
+    // browser or operating-system Command/Ctrl shortcut.
+    if (usesPrimaryModifier(e)) return;
 
     if (e.key.toLowerCase() === toolShortcuts.swap) swapBtn.click();
     if (e.key.toLowerCase() === toolShortcuts.mirror) { mirrorBasic.checked = !mirrorBasic.checked; updateMirrorState(); }
@@ -1847,6 +1855,8 @@ btn3D.addEventListener('click', () => {
     is2DMode = false; btn3D.classList.add('active'); btn2D.classList.remove('active');
     if (typeof hideBrushCursorOverlay === 'function') hideBrushCursorOverlay();
     canvas3d.style.display = 'block'; container2D.style.display = 'none';
+    // The workspace may have changed size while 2D mode was active.
+    requestAnimationFrame(() => { if (typeof fit3DCanvasToWorkspace === 'function') fit3DCanvasToWorkspace(); });
     document.getElementById('view-orientation-cube').style.display = 'block';
     if (typeof updateOrientationCube === 'function') updateOrientationCube();
     if (typeof updateTexture === 'function') updateTexture();
@@ -1922,12 +1932,12 @@ renderCanvas.addEventListener('mouseleave', () => {
 function beginRectangleSelection(e) {
     const { px, py } = get2DCoords(e, false);
     isDrawing2D = true;
-    if (e.button === 2 && e.ctrlKey) rectSelMode = 'xor';
+    if (e.button === 2 && usesPrimaryModifier(e)) rectSelMode = 'xor';
     else if (e.button === 2 || (e.button === 0 && e.altKey)) rectSelMode = 'subtract';
     else rectSelMode = 'add';
 
     const isInsideCanvas = px >= 0 && px < SKIN_RES && py >= 0 && py < SKIN_RES;
-    const clearsExistingSelection = !e.ctrlKey && rectSelMode === 'add';
+    const clearsExistingSelection = !usesPrimaryModifier(e) && rectSelMode === 'add';
     if (isInsideCanvas && clearsExistingSelection) {
         selectionMask.fill(0);
         hasSelection = false;
@@ -1998,7 +2008,7 @@ renderCanvas.addEventListener('mousedown', (e) => {
     // Sihirli değnek yönetimi
     if (activeTool === 'magic_wand') {
         if (e.button !== 0) return; // Sihirli değnek sağ tık desteklemez
-        if (!e.ctrlKey) { selectionMask.fill(0); }
+        if (!usesPrimaryModifier(e)) { selectionMask.fill(0); }
 
         if (!window.cachedImageData) window.cachedImageData = ctx2d.getImageData(0, 0, SKIN_RES, SKIN_RES).data;
         const targetColor = ctx2d.getImageData(px, py, 1, 1).data;
@@ -2006,7 +2016,7 @@ renderCanvas.addEventListener('mousedown', (e) => {
         const tolPercent = document.getElementById('slider-wand-tol').value / 100;
         const targetDistSq = (255 * 255 * 4) * (tolPercent * tolPercent);
 
-        if (e.ctrlKey && e.shiftKey) {
+        if (usesPrimaryModifier(e) && e.shiftKey) {
             for (let i = 0; i < SKIN_RES * SKIN_RES; i++) {
                 const idx = i * 4;
                 const distSq = Math.pow(data[idx] - targetColor[0], 2) + Math.pow(data[idx + 1] - targetColor[1], 2) + Math.pow(data[idx + 2] - targetColor[2], 2) + Math.pow(data[idx + 3] - targetColor[3], 2);
@@ -2357,6 +2367,7 @@ function startTransform() {
         angle: 0, scaleX: 1, scaleY: 1,
         canvas: document.createElement('canvas'),
         maskCanvas: document.createElement('canvas'),
+        originalPixels: null,
         isDragging: false
     };
     transformData.canvas.width = bounds.w;
@@ -2852,6 +2863,7 @@ function openAdjustmentWindow(win) {
         setAdjustmentValue('adj-hue', lastAdjustmentValues.hueSat.hue, false);
         setAdjustmentValue('adj-sat', lastAdjustmentValues.hueSat.sat, false);
         setAdjustmentValue('adj-light', lastAdjustmentValues.hueSat.light, false);
+        document.getElementById('adj-colorize').checked = lastAdjustmentValues.hueSat.colorize;
         processHueSaturation();
     } else if (win.id === 'window-bri-con') {
         setAdjustmentValue('adj-bri', lastAdjustmentValues.brightnessContrast.bri, false);
@@ -2887,6 +2899,7 @@ function applyAdjustments(win) {
         lastAdjustmentValues.hueSat.hue = Number(document.getElementById('adj-hue').value);
         lastAdjustmentValues.hueSat.sat = Number(document.getElementById('adj-sat').value);
         lastAdjustmentValues.hueSat.light = Number(document.getElementById('adj-light').value);
+        lastAdjustmentValues.hueSat.colorize = document.getElementById('adj-colorize').checked;
         schedulePreferencesSave();
     } else if (win.id === 'window-bri-con') {
         lastAdjustmentValues.brightnessContrast.bri = Number(document.getElementById('adj-bri').value);
@@ -2995,11 +3008,55 @@ document.querySelectorAll('[data-adjustment-reset]').forEach(button => {
     button.addEventListener('click', () => setAdjustmentValue(button.dataset.adjustmentReset, adjustmentControlDefaults[button.dataset.adjustmentReset]));
 });
 
+document.getElementById('adj-colorize').addEventListener('change', processHueSaturation);
+
+function colorizePreservingLuminosity(baseR, baseG, baseB, hue, saturation) {
+    // Photoshop's Colorize behavior is a component-color transfer: give the
+    // pixel the requested hue/saturation, then restore the source luminosity.
+    // The clipping step follows the standard Adobe/PDF component blend model.
+    // First find the fully saturated version at this hue. Blending it with
+    // neutral gray below gives the Saturation slider a stable, visible range
+    // even on very bright or very dark source colors.
+    const target = hslToRgbArr(hue, 1, 0.5);
+    let r = target[0] / 255;
+    let g = target[1] / 255;
+    let b = target[2] / 255;
+    const sourceLuminosity = (0.3 * baseR + 0.59 * baseG + 0.11 * baseB) / 255;
+    const targetLuminosity = 0.3 * r + 0.59 * g + 0.11 * b;
+    const delta = sourceLuminosity - targetLuminosity;
+    r += delta; g += delta; b += delta;
+
+    let minimum = Math.min(r, g, b);
+    let maximum = Math.max(r, g, b);
+    if (minimum < 0) {
+        r = sourceLuminosity + ((r - sourceLuminosity) * sourceLuminosity) / (sourceLuminosity - minimum);
+        g = sourceLuminosity + ((g - sourceLuminosity) * sourceLuminosity) / (sourceLuminosity - minimum);
+        b = sourceLuminosity + ((b - sourceLuminosity) * sourceLuminosity) / (sourceLuminosity - minimum);
+    }
+    minimum = Math.min(r, g, b);
+    maximum = Math.max(r, g, b);
+    if (maximum > 1) {
+        r = sourceLuminosity + ((r - sourceLuminosity) * (1 - sourceLuminosity)) / (maximum - sourceLuminosity);
+        g = sourceLuminosity + ((g - sourceLuminosity) * (1 - sourceLuminosity)) / (maximum - sourceLuminosity);
+        b = sourceLuminosity + ((b - sourceLuminosity) * (1 - sourceLuminosity)) / (maximum - sourceLuminosity);
+    }
+    r = Math.max(0, Math.min(1, r));
+    g = Math.max(0, Math.min(1, g));
+    b = Math.max(0, Math.min(1, b));
+    const neutral = sourceLuminosity;
+    return [
+        Math.round((neutral + (r - neutral) * saturation) * 255),
+        Math.round((neutral + (g - neutral) * saturation) * 255),
+        Math.round((neutral + (b - neutral) * saturation) * 255)
+    ];
+}
+
 function processHueSaturation() {
     if (!originalStateData) return;
     const hVal = parseInt(document.getElementById('adj-hue').value) / 360;
     const sVal = parseInt(document.getElementById('adj-sat').value) / 100;
     const lVal = parseInt(document.getElementById('adj-light').value) / 100;
+    const colorize = document.getElementById('adj-colorize').checked;
     // Paint.NET documents an amplified saturation scale above 100% and
     // RGB interpolation towards black/white, rather than modifying HSL L.
     // https://paint.net/doc/api/preview/api/PaintDotNet.Effects.Gpu.PdnHueSaturationLightnessEffect.Props.html
@@ -3013,18 +3070,30 @@ function processHueSaturation() {
         if (data[i + 3] === 0) continue;
         if (hasSelection && !selectionMask[i / 4]) continue;
 
-        // Paint.NET's classic adjustment scales RGB distance from luminance,
-        // not HSL saturation (which already equals 1 for e.g. dark red).
-        // Reference: OpenPDN src/Core/UnaryPixelOps.cs and ColorBgra.cs.
-        const intensity = (19595 * data[i] + 38470 * data[i + 1] + 7471 * data[i + 2]) >> 16;
-        let rgb = [data[i], data[i + 1], data[i + 2]].map(value =>
-            Math.max(0, Math.min(255,
-                (intensity * 1024 + (value - intensity) * saturationScale) >> 10)));
-        // Rotate hue after saturation. A hue-only HSL rotation preserves the
-        // RGB minimum/maximum, just like a hue-only HSV rotation.
-        if (hVal !== 0) {
-            const hsl = rgbToHslObj(...rgb);
-            rgb = hslToRgbArr((hsl.h + hVal + 1) % 1, hsl.s, hsl.l);
+        let rgb;
+        if (colorize) {
+            // The slider is drawn as a full rainbow from -180 (red) to 180
+            // (red); use that same position-to-hue mapping here.
+            const colorizeHue = (Number(document.getElementById('adj-hue').value) + 180) / 360;
+            // The normal Paint.NET-style control is centred at 100. In
+            // Colorize mode, map its full 0–200 range to 0–100% chroma so
+            // increasing Saturation above 100 still has a visible effect.
+            const colorizeSaturation = Math.max(0, Math.min(1, sVal / 2));
+            rgb = colorizePreservingLuminosity(data[i], data[i + 1], data[i + 2], colorizeHue % 1, colorizeSaturation);
+        } else {
+            // Paint.NET's classic adjustment scales RGB distance from luminance,
+            // not HSL saturation (which already equals 1 for e.g. dark red).
+            // Reference: OpenPDN src/Core/UnaryPixelOps.cs and ColorBgra.cs.
+            const intensity = (19595 * data[i] + 38470 * data[i + 1] + 7471 * data[i + 2]) >> 16;
+            rgb = [data[i], data[i + 1], data[i + 2]].map(value =>
+                Math.max(0, Math.min(255,
+                    (intensity * 1024 + (value - intensity) * saturationScale) >> 10)));
+            // Rotate hue after saturation. A hue-only HSL rotation preserves the
+            // RGB minimum/maximum, just like a hue-only HSV rotation.
+            if (hVal !== 0) {
+                const hsl = rgbToHslObj(...rgb);
+                rgb = hslToRgbArr((hsl.h + hVal + 1) % 1, hsl.s, hsl.l);
+            }
         }
         for (let channel = 0; channel < 3; channel++) {
             const value = rgb[channel];

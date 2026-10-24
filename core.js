@@ -31,6 +31,35 @@ let lastAnimTime = 0;
 const gridSvg = document.getElementById('editor-2d-grid');
 
 const canvas3d = document.getElementById('editor-3d-canvas');
+const workspace3d = canvas3d.closest('.workspace');
+const THREE_VIEW_ASPECT = 4 / 3;
+
+// Browsers expose Command as metaKey on macOS and Ctrl as ctrlKey elsewhere.
+// Keep keyboard behavior identical without treating Alt/Option as a shortcut.
+function usesPrimaryModifier(event) {
+    return Boolean(event && (event.ctrlKey || event.metaKey));
+}
+
+// The renderer's backing buffer is always 1200x900.  Give its displayed
+// canvas one contained 4:3 size as the application window changes, rather
+// than letting CSS clamp its width and height independently.
+function fit3DCanvasToWorkspace() {
+    if (!workspace3d) return;
+    const availableWidth = workspace3d.clientWidth;
+    const availableHeight = workspace3d.clientHeight;
+    if (!availableWidth || !availableHeight) return;
+
+    const scale = Math.min(1, availableWidth / 1200, availableHeight / 900);
+    const width = Math.max(1, 1200 * scale);
+    const height = Math.max(1, 900 * scale);
+    canvas3d.style.width = `${width}px`;
+    canvas3d.style.height = `${height}px`;
+}
+
+if (workspace3d && window.ResizeObserver) {
+    new ResizeObserver(fit3DCanvasToWorkspace).observe(workspace3d);
+}
+window.addEventListener('resize', fit3DCanvasToWorkspace);
 const orientationCubeCanvas = document.getElementById('view-orientation-cube');
 let orientationCubeRenderer = null;
 let orientationCubeScene = null;
@@ -1116,6 +1145,7 @@ function init3DViewer() {
     if (!window.skinview3d || !window.skinview3d.SkinViewer) { console.error("skinview3d yüklenemedi."); return false; }
     try {
         viewer3d = new skinview3d.SkinViewer({ canvas: canvas3d, width: 1200, height: 900, alpha: true });
+        fit3DCanvasToWorkspace();
         viewer3d.camera.position.set(0, 8, 60);
         if (viewer3d.controls) {
             viewer3d.controls.enableZoom = true; viewer3d.controls.enableRotate = true; viewer3d.controls.target.set(0, 8, 0);
@@ -1697,7 +1727,7 @@ function centerCameraOnVisibleParts() {
 
 function handleBodyPartClick(event) {
     if (event.button !== 0) return;
-    if (event.shiftKey || event.ctrlKey) {
+    if (event.shiftKey || usesPrimaryModifier(event)) {
         event.preventDefault();
         document.querySelectorAll('.body-map .part').forEach(part => {
             part.classList.toggle('off', part !== this);
@@ -1711,7 +1741,7 @@ function handleBodyPartClick(event) {
 
 document.querySelectorAll('.body-map .part').forEach(btn => {
     btn.addEventListener('click', handleBodyPartClick);
-    btn.title = 'Toggle part · Shift/Ctrl + click to show only this part';
+    btn.title = 'Toggle part · Shift/Ctrl/⌘ + click to show only this part';
 });
 document.getElementById('toggle-inner-all').addEventListener('change', e => { const isChecked = e.target.checked; document.querySelectorAll('.inner-map .part').forEach(btn => { if(isChecked) btn.classList.remove('off'); else btn.classList.add('off'); }); enforceUIVisibilityState(); });
 document.getElementById('toggle-outer-all').addEventListener('change', e => { const isChecked = e.target.checked; document.querySelectorAll('.outer-map .part').forEach(btn => { if(isChecked) btn.classList.remove('off'); else btn.classList.add('off'); }); enforceUIVisibilityState(); if (gridToggle.checked) updateTexture(); });

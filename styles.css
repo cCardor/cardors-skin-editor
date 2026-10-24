@@ -396,9 +396,12 @@
 #editor-3d-canvas {
             display: block;
             width: 1200px;
-            height: 900px;
+            height: auto;
+            aspect-ratio: 4 / 3;
             max-width: 100%;
             max-height: 100%;
+            object-fit: contain;
+            flex: 0 0 auto;
             border-radius: 0;
             background: transparent;
             cursor: grab;
@@ -1473,6 +1476,17 @@ body::before {
 .mirror-settings, .action-buttons { border-top-color: var(--ui-border); padding-top: 10px; }
 .mirror-settings label { color: #c5d2e9; font-size: 12px; }
 .mirror-check, .master-toggle { accent-color: var(--ui-accent); }
+.adjustment-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin: 2px 0 0;
+    color: #d5d5d5;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.adjustment-checkbox input { width: 14px; height: 14px; margin: 0; accent-color: #bdbdbd; cursor: pointer; }
 
 .part { background: linear-gradient(145deg, #627d9a, #40586f); border-color: rgba(194, 223, 255, .12); border-radius: 4px; box-shadow: inset 0 1px rgba(255,255,255,.12); }
 .outer-map .part { background: linear-gradient(145deg, #426fb1, #4c4ca2); border-color: rgba(122, 229, 239, .42); }

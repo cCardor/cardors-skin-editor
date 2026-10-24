@@ -359,8 +359,8 @@
             </div>
         </div>
         <div class="history-navigation" aria-label="History actions">
-            <button id="btn-history-undo" type="button" title="Undo (Ctrl+Z)" aria-label="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 6 6v1"/></svg></button>
-            <button id="btn-history-redo" type="button" title="Redo (Ctrl+Y)" aria-label="Redo (Ctrl+Y)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0-6 6v1"/></svg></button>
+            <button id="btn-history-undo" type="button" title="Undo (Ctrl/⌘+Z)" aria-label="Undo (Ctrl/⌘+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 6 6v1"/></svg></button>
+            <button id="btn-history-redo" type="button" title="Redo (Ctrl+Y or Ctrl/⌘+Shift+Z)" aria-label="Redo (Ctrl+Y or Ctrl/⌘+Shift+Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0-6 6v1"/></svg></button>
         </div>
         </div>
 
@@ -421,6 +421,7 @@
                 <div class="adjustment-control-header"><label for="adj-light">Lightness</label><div class="adjustment-value-controls"><button type="button" class="adjustment-step" data-adjustment-step="adj-light" data-step="-1" aria-label="Lightness değerini 1 azalt">−</button><input id="adj-light-number" class="adjustment-number" type="number" min="-100" max="100" step="1" value="0" aria-label="Lightness değeri"><button type="button" class="adjustment-step" data-adjustment-step="adj-light" data-step="1" aria-label="Lightness değerini 1 artır">+</button><button type="button" class="adjustment-reset" data-adjustment-reset="adj-light" title="Lightness sıfırla" aria-label="Lightness sıfırla"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0 2 5.3"/><path d="M20 4v7h-7"/></svg></button></div></div>
                 <input type="range" id="adj-light" min="-100" max="100" value="0" class="styled-slider" style="width: 100%;">
             </div>
+            <label class="adjustment-checkbox"><input type="checkbox" id="adj-colorize"> Colorize</label>
             <div class="modal-actions" style="margin-top: 15px;">
                 <button class="modal-btn" id="btn-hue-cancel">Cancel</button>
                 <button class="modal-btn primary" id="btn-hue-ok">OK</button>
